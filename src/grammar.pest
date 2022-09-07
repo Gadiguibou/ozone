@@ -3,18 +3,22 @@ COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 
 file = { SOI ~ arithmetic_expression ~ EOI }
 
-arithmetic_expression = { negation_expression ~ ((
-    // Multiple character tokens
-    power
-    // Single character tokens
-    | plus
-    | minus
-    | times
-    | divide
-    | modulo
-) ~ negation_expression)* }
+arithmetic_expression = {
+    | parenthesized_expression ~ ((
+        // Multiple character tokens
+        power
+        // Single character tokens
+        | plus
+        | minus
+        | times
+        | divide
+        | modulo
+    ) ~ parenthesized_expression)*
+}
 
-negation_expression = { "-" ~ negation_expression | integer }
+parenthesized_expression = { "(" ~ arithmetic_expression ~ ")" | negation_expression }
+
+negation_expression = { "-" ~ parenthesized_expression | integer }
 
 integer = @{ '0'..'9' ~ ( '0'..'9' | "_" )* }
 

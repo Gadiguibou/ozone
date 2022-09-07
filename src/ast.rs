@@ -35,36 +35,6 @@ impl ArithmeticExpr {
             ])
         });
 
-        /// Parses a [Rule::negation_expression].
-        fn primary(pair: Pair<Rule>) -> anyhow::Result<ArithmeticExpr> {
-            // In the case where there is a negation, a negation_expression contains another negation_expression.
-            // Otherwise, it only contains an integer literal.
-
-            // Recursively evaluate the negation expression to find its final negation status.
-            let mut inner = unsafe { pair.into_inner().next().unwrap_unchecked() };
-            let mut negative = false;
-            loop {
-                match inner.as_rule() {
-                    Rule::integer => {
-                        let integer = parse_integer(inner.as_str());
-                        break if negative {
-                            Ok(ArithmeticExpr::UnaryOp {
-                                op: UnaryOp::Negate,
-                                expr: Box::new(ArithmeticExpr::Literal(integer)),
-                            })
-                        } else {
-                            Ok(ArithmeticExpr::Literal(integer))
-                        };
-                    }
-                    Rule::negation_expression => {
-                        inner = unsafe { inner.into_inner().next().unwrap_unchecked() };
-                        negative = !negative;
-                    }
-                    _ => unreachable!(),
-                }
-            }
-        }
-
         fn infix(
             lhs: anyhow::Result<ArithmeticExpr>,
             op: Pair<Rule>,
@@ -90,16 +60,43 @@ impl ArithmeticExpr {
             })
         }
 
-        PREC_CLIMBER.climb(pair.into_inner(), primary, infix)
+        PREC_CLIMBER.climb(pair.into_inner(), parse_parenthesized_expression, infix)
+    }
+}
+
+/// Parses a [Rule::parenthesized_expression].
+fn parse_parenthesized_expression(pair: Pair<Rule>) -> anyhow::Result<ArithmeticExpr> {
+    let inner = unsafe { pair.into_inner().next().unwrap_unchecked() };
+    match inner.as_rule() {
+        Rule::arithmetic_expression => ArithmeticExpr::from_pair(inner),
+        Rule::negation_expression => parse_negation_expression(inner),
+        _ => unreachable!(),
+    }
+}
+
+/// Parses a [Rule::negation_expression].
+fn parse_negation_expression(pair: Pair<Rule>) -> anyhow::Result<ArithmeticExpr> {
+    let inner = unsafe { pair.into_inner().next().unwrap_unchecked() };
+    match inner.as_rule() {
+        Rule::parenthesized_expression => {
+            let parenthesized_expression = parse_parenthesized_expression(inner)?;
+            Ok(ArithmeticExpr::UnaryOp {
+                op: UnaryOp::Negate,
+                expr: Box::new(parenthesized_expression),
+            })
+        }
+        Rule::integer => parse_integer(inner),
+        _ => unreachable!(),
     }
 }
 
 /// Parses a string from a [Rule::integer].
-fn parse_integer(s: &str) -> i64 {
-    let result = s.chars().filter(|c| c != &'_').collect::<String>().parse();
+fn parse_integer(pair: Pair<Rule>) -> anyhow::Result<ArithmeticExpr> {
+    let s = pair.as_str();
+    let integer: Result<i64, _> = s.chars().filter(|c| c != &'_').collect::<String>().parse();
     // All expressions composed of only ascii digits and underscores are valid integers (except for overflow)
     // TODO: Handle overflows gracefully
-    result.unwrap()
+    Ok(ArithmeticExpr::Literal(integer.unwrap()))
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
