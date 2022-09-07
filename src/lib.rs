@@ -1,3 +1,4 @@
+mod ast;
 mod interpreter;
 mod parser;
 
@@ -28,16 +29,23 @@ pub fn run_prompt() -> anyhow::Result<()> {
 
 pub fn run(contents: &str) -> anyhow::Result<()> {
     let parse = Parser::parse(Rule::file, contents);
-    println!("{parse:#?}");
+    // println!("{parse:#?}");
+
     let arithmetic_expression = unsafe {
         parse?
+            // Get file
             .next()
             .unwrap_unchecked()
+            // Get arithmetic_expression
             .into_inner()
             .next()
             .unwrap_unchecked()
     };
-    let result = interpreter::eval(arithmetic_expression);
+    let ast = ast::ArithmeticExpr::from_pair(arithmetic_expression)?;
+    // println!("{ast:#?}");
+
+    let result = interpreter::eval(&ast);
     println!("{result}");
+
     Ok(())
 }

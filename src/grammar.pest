@@ -2,6 +2,7 @@ WHITESPACE = _{ PATTERN_WHITE_SPACE }
 COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 
 file = { SOI ~ arithmetic_expression ~ EOI }
+
 arithmetic_expression = { negation_expression ~ ((
     // Multiple character tokens
     power
@@ -12,8 +13,11 @@ arithmetic_expression = { negation_expression ~ ((
     | divide
     | modulo
 ) ~ negation_expression)* }
+
 negation_expression = { "-" ~ negation_expression | integer }
+
 integer = @{ '0'..'9' ~ ( '0'..'9' | "_" )* }
+
 power = { "**" }
 plus = { "+" }
 minus = { "-" }
