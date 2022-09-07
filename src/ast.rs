@@ -1,5 +1,5 @@
 use crate::parser::Rule;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use pest::iterators::Pair;
 use pest::prec_climber::{Assoc, Operator, PrecClimber};
 
@@ -24,16 +24,16 @@ impl ArithmeticExpr {
             panic!("Did not pass in an arithmetic expression")
         }
 
-        lazy_static! {
-            // Precedence increases with the index in the Vec
-            static ref PREC_CLIMBER: PrecClimber<Rule> = PrecClimber::new(vec![
+        // Precedence increases with the index in the Vec
+        static PREC_CLIMBER: Lazy<PrecClimber<Rule>> = Lazy::new(|| {
+            PrecClimber::new(vec![
                 Operator::new(Rule::plus, Assoc::Left) | Operator::new(Rule::minus, Assoc::Left),
                 Operator::new(Rule::times, Assoc::Left)
                     | Operator::new(Rule::divide, Assoc::Left)
                     | Operator::new(Rule::modulo, Assoc::Left),
                 Operator::new(Rule::power, Assoc::Right),
-            ]);
-        }
+            ])
+        });
 
         /// Parses a [Rule::negation_expression].
         fn primary(pair: Pair<Rule>) -> anyhow::Result<ArithmeticExpr> {
