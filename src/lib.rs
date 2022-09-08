@@ -41,11 +41,11 @@ pub fn run(contents: &str) -> anyhow::Result<()> {
             .next()
             .unwrap_unchecked()
     };
-    let ast = ast::ArithmeticExpr::from_pair(arithmetic_expression)?;
-    // println!("{ast:#?}");
+    let ast = ast::Expr::from_pair(arithmetic_expression)?;
+    println!("{ast:#?}");
 
-    let result = interpreter::eval(&ast);
-    println!("{result}");
+    let result = interpreter::eval(&ast)?;
+    println!("{result:#?}");
 
     Ok(())
 }

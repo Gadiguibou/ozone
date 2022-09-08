@@ -1,13 +1,31 @@
 WHITESPACE = _{ PATTERN_WHITE_SPACE }
 COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 
-file = { SOI ~ arithmetic_expression ~ EOI }
+file = { SOI ~ expression ~ EOI }
 
-arithmetic_expression = {
-    | parenthesized_expression ~ ((
-        // Multiple character tokens
-        power
-        // Single character tokens
+expression = {
+      conditional_expression
+    | infix_expression
+}
+
+conditional_expression = { "if" ~ expression ~ "then" ~ expression ~ "else" ~ expression }
+
+infix_expression = {
+    parenthesized_expression ~ ((
+        // IMPORTANT: Multiple character tokens should be listed first to ensure they are parsed correctly
+        // Logical
+          and
+        | or
+        // Equality
+        | equal
+        | not_equal
+        // Ordering
+        | less_than_or_equal
+        | greater_than_or_equal
+        | less_than
+        | greater_than
+        // Arithmetic
+        | power
         | plus
         | minus
         | times
@@ -16,15 +34,31 @@ arithmetic_expression = {
     ) ~ parenthesized_expression)*
 }
 
-parenthesized_expression = { "(" ~ arithmetic_expression ~ ")" | negation_expression }
+parenthesized_expression = { "(" ~ expression ~ ")" | negation_expression }
 
-negation_expression = { "-" ~ parenthesized_expression | integer }
+negation_expression = { minus ~ parenthesized_expression | not ~ parenthesized_expression | literal }
+
+literal = { integer | boolean }
 
 integer = @{ '0'..'9' ~ ( '0'..'9' | "_" )* }
+boolean = { "true" | "false" }
 
+// Equality
+equal = { "==" }
+not_equal = { "!=" }
+// Ordering
+less_than_or_equal = { "<=" }
+greater_than_or_equal = { ">=" }
+less_than = { "<" }
+greater_than = { ">" }
+// Logical
+and = { "and" }
+or = { "or" }
+not = { "!" } // Unary only
+// Arithmetic
 power = { "**" }
 plus = { "+" }
-minus = { "-" }
+minus = { "-" } // Unary and binary
 times = { "*" }
 divide = { "/" }
 modulo = { "%" }
