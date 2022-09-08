@@ -5,10 +5,12 @@ file = { SOI ~ expression ~ EOI }
 
 expression = {
       conditional_expression
+    | binding_expression
     | infix_expression
 }
 
 conditional_expression = { "if" ~ expression ~ "then" ~ expression ~ "else" ~ expression }
+binding_expression = { "let" ~ identifier ~ "=" ~ expression ~ "in" ~ expression }
 
 infix_expression = {
     parenthesized_expression ~ ((
@@ -36,7 +38,9 @@ infix_expression = {
 
 parenthesized_expression = { "(" ~ expression ~ ")" | negation_expression }
 
-negation_expression = { minus ~ parenthesized_expression | not ~ parenthesized_expression | literal }
+negation_expression = { minus ~ parenthesized_expression | not ~ parenthesized_expression | identifier | literal }
+
+identifier = @{ XID_START ~ (XID_CONTINUE)* }
 
 literal = { integer | boolean }
 

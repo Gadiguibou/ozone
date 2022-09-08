@@ -10,6 +10,11 @@ pub enum Expr {
         then_expr: Box<Expr>,
         else_expr: Box<Expr>,
     },
+    Binding {
+        name: String,
+        value: Box<Expr>,
+        body: Box<Expr>,
+    },
     BinaryOp {
         op: BinaryOp,
         lhs: Box<Expr>,
@@ -21,6 +26,7 @@ pub enum Expr {
     },
     Integer(i64),
     Boolean(bool),
+    Identifier(String),
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
@@ -63,6 +69,7 @@ impl Expr {
         match inner.as_rule() {
             Rule::conditional_expression => parse_conditional_expression(inner),
             Rule::infix_expression => parse_infix_expression(inner),
+            Rule::binding_expression => parse_binding_expression(inner),
             _ => unreachable!(),
         }
     }
@@ -80,6 +87,21 @@ fn parse_conditional_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
         condition: Box::new(Expr::from_pair(condition)?),
         then_expr: Box::new(Expr::from_pair(then_expr)?),
         else_expr: Box::new(Expr::from_pair(else_expr)?),
+    })
+}
+
+/// Parses a [Rule::binding_expression].
+fn parse_binding_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+    let mut inner = pair.into_inner();
+
+    let name = inner.next().unwrap();
+    let value = inner.next().unwrap();
+    let body = inner.next().unwrap();
+
+    Ok(Expr::Binding {
+        name: name.as_str().to_string(),
+        value: Box::new(Expr::from_pair(value)?),
+        body: Box::new(Expr::from_pair(body)?),
     })
 }
 
@@ -176,6 +198,7 @@ fn parse_negation_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
             })
         }
         Rule::literal => parse_literal(first),
+        Rule::identifier => parse_identifier(first),
         _ => unreachable!(),
     }
 }
@@ -209,4 +232,10 @@ fn parse_boolean(pair: Pair<Rule>) -> anyhow::Result<Expr> {
         _ => unreachable!(),
     };
     Ok(Expr::Boolean(boolean))
+}
+
+/// Parses a [Rule::identifier].
+fn parse_identifier(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+    let s = pair.as_str();
+    Ok(Expr::Identifier(s.to_string()))
 }

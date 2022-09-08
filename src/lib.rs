@@ -9,6 +9,8 @@ use pest::Parser as PestParser;
 use std::io::Write;
 use std::io::{self, BufRead};
 
+use crate::interpreter::Bindings;
+
 pub fn run_file(path: &str) -> anyhow::Result<()> {
     let contents = std::fs::read_to_string(path)?;
     run(&contents)
@@ -44,7 +46,7 @@ pub fn run(contents: &str) -> anyhow::Result<()> {
     let ast = ast::Expr::from_pair(arithmetic_expression)?;
     println!("{ast:#?}");
 
-    let result = interpreter::eval(&ast)?;
+    let result = interpreter::eval(&ast, &mut Bindings::default())?;
     println!("{result:#?}");
 
     Ok(())
