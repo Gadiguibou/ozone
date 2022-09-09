@@ -46,7 +46,7 @@ pub fn run(contents: &str) -> anyhow::Result<()> {
     let ast = ast::Expr::from_pair(arithmetic_expression)?;
     println!("{ast:#?}");
 
-    let result = interpreter::eval(&ast, &mut Bindings::default())?;
+    let result = interpreter::eval(&ast, &Bindings::default())?;
     println!("{result:#?}");
 
     Ok(())

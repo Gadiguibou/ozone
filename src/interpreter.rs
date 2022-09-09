@@ -11,13 +11,14 @@ pub enum DynValue {
 // Uses rustc_hash's FxHasher since bindings need to be fast and don't need to be cryptographically secure.
 pub type Bindings = rustc_hash::FxHashMap<String, Binding>;
 
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct Binding {
     value: DynValue,
     mutable: bool,
 }
 
 /// Evaluates an [ArithmeticExpr].
-pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
+pub fn eval(expr: &Expr, bindings: &Bindings) -> anyhow::Result<DynValue> {
     use DynValue::*;
 
     match expr {
@@ -39,6 +40,14 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
         }
         Expr::Binding { name, value, body } => {
             let value = eval(value, bindings)?;
+            // TODO: Find a way to avoid cloning bindings when possible.
+            // For example, we could do the following:
+            //  - Use immutable references for immutable bindings and mutable references for mutable bindings. (Cloning the bindings would clone the references.)
+            //  - Create a stack of bindings and pop them off when we exit a binding.
+            //  - Eagerly resolve bindings when building the AST.
+            //  - Use a reference counted pointer to avoid cloning the bindings when there is only one reference to them?
+            //
+            let mut bindings = bindings.clone();
             bindings.insert(
                 name.clone(),
                 Binding {
@@ -46,7 +55,7 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                     mutable: false,
                 },
             );
-            let body = eval(body, bindings)?;
+            let body = eval(body, &bindings)?;
             Ok(body)
         }
         Expr::BinaryOp { op, lhs, rhs } => {
