@@ -58,20 +58,35 @@ pub enum UnaryOp {
 }
 
 impl Expr {
-    /// Constructs an [ArithmeticExpr] while respecting operator precedence and associativity.
+    /// Constructs an [Rule::expression] while respecting operator precedence and associativity.
     pub fn from_pair(pair: Pair<Rule>) -> anyhow::Result<Expr> {
         if pair.as_rule() != Rule::expression {
-            panic!("Did not pass in an arithmetic expression")
+            panic!("Did not pass in an expression")
         }
 
         let inner = pair.into_inner().next().unwrap();
 
         match inner.as_rule() {
-            Rule::conditional_expression => parse_conditional_expression(inner),
+            Rule::prefix_expression => parse_prefix_expression(inner),
             Rule::infix_expression => parse_infix_expression(inner),
-            Rule::binding_expression => parse_binding_expression(inner),
             _ => unreachable!(),
         }
+    }
+}
+
+/// Parses a [Rule::subexpression].
+fn parse_subexpression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+    let inner = pair.into_inner().next().unwrap();
+
+    match inner.as_rule() {
+        Rule::infix_expression => parse_infix_expression(inner),
+        Rule::conditional_expression => parse_conditional_expression(inner),
+        Rule::binding_expression => parse_binding_expression(inner),
+        Rule::parenthesized_expression => parse_parenthesized_expression(inner),
+        Rule::prefix_expression => parse_prefix_expression(inner),
+        Rule::identifier => parse_identifier(inner),
+        Rule::literal => parse_literal(inner),
+        _ => unreachable!(),
     }
 }
 
@@ -163,7 +178,7 @@ fn parse_infix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
         })
     }
 
-    PREC_CLIMBER.climb(pair.into_inner(), parse_parenthesized_expression, infix)
+    PREC_CLIMBER.climb(pair.into_inner(), parse_subexpression, infix)
 }
 
 /// Parses a [Rule::parenthesized_expression].
@@ -171,30 +186,29 @@ fn parse_parenthesized_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
     let inner = unsafe { pair.into_inner().next().unwrap_unchecked() };
     match inner.as_rule() {
         Rule::expression => Expr::from_pair(inner),
-        Rule::negation_expression => parse_negation_expression(inner),
         _ => unreachable!(),
     }
 }
 
-/// Parses a [Rule::negation_expression].
-fn parse_negation_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+/// Parses a [Rule::prefix_expression].
+fn parse_prefix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
     let mut inner = pair.into_inner();
     let (first, second) = (inner.next(), inner.next());
     // first is always present
     let first = first.unwrap();
     match first.as_rule() {
         Rule::minus => {
-            let parenthesized_expression = parse_parenthesized_expression(second.unwrap())?;
+            let subexpression = parse_subexpression(second.unwrap())?;
             Ok(Expr::UnaryOp {
                 op: UnaryOp::Negate,
-                expr: Box::new(parenthesized_expression),
+                expr: Box::new(subexpression),
             })
         }
         Rule::not => {
-            let parenthesized_expression = parse_parenthesized_expression(second.unwrap())?;
+            let subexpression = parse_subexpression(second.unwrap())?;
             Ok(Expr::UnaryOp {
                 op: UnaryOp::Not,
-                expr: Box::new(parenthesized_expression),
+                expr: Box::new(subexpression),
             })
         }
         Rule::literal => parse_literal(first),

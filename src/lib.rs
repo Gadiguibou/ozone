@@ -33,18 +33,20 @@ pub fn run(contents: &str) -> anyhow::Result<()> {
     let parse = Parser::parse(Rule::file, contents);
     // println!("{parse:#?}");
 
-    let arithmetic_expression = unsafe {
+    let expression = unsafe {
         parse?
             // Get file
             .next()
             .unwrap_unchecked()
-            // Get arithmetic_expression
+            // Get expression
             .into_inner()
             .next()
             .unwrap_unchecked()
     };
-    let ast = ast::Expr::from_pair(arithmetic_expression)?;
-    println!("{ast:#?}");
+    // println!("{expression:#?}");
+
+    let ast = ast::Expr::from_pair(expression)?;
+    // println!("{ast:#?}");
 
     let result = interpreter::eval(&ast, &Bindings::default())?;
     println!("{result:#?}");

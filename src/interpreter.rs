@@ -17,7 +17,7 @@ pub struct Binding {
     mutable: bool,
 }
 
-/// Evaluates an [ArithmeticExpr].
+/// Evaluates an [Expr].
 pub fn eval(expr: &Expr, bindings: &Bindings) -> anyhow::Result<DynValue> {
     use DynValue::*;
 

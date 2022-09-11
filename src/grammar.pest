@@ -4,16 +4,24 @@ COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 file = { SOI ~ expression ~ EOI }
 
 expression = {
+    prefix_expression
+  | infix_expression }
+
+subexpression = {
       conditional_expression
     | binding_expression
-    | infix_expression
+    | parenthesized_expression
+    | prefix_expression
+    | identifier
+    | literal
 }
 
 conditional_expression = { "if" ~ expression ~ "then" ~ expression ~ "else" ~ expression }
 binding_expression = { "let" ~ identifier ~ "=" ~ expression ~ "in" ~ expression }
 
 infix_expression = {
-    parenthesized_expression ~ ((
+  subexpression ~ ((
+        // Operator precedence is defined in `ast::parse_infix_expression`.
         // IMPORTANT: Multiple character tokens should be listed first to ensure they are parsed correctly
         // Logical
           and
@@ -33,12 +41,12 @@ infix_expression = {
         | times
         | divide
         | modulo
-    ) ~ parenthesized_expression)*
+    ) ~ subexpression)*
 }
 
-parenthesized_expression = { "(" ~ expression ~ ")" | negation_expression }
+parenthesized_expression = { "(" ~ expression ~ ")"}
 
-negation_expression = { minus ~ parenthesized_expression | not ~ parenthesized_expression | identifier | literal }
+prefix_expression = { minus ~ subexpression | not ~ subexpression }
 
 identifier = @{ XID_START ~ (XID_CONTINUE)* }
 
@@ -60,7 +68,7 @@ and = { "and" }
 or = { "or" }
 not = { "!" } // Unary only
 // Arithmetic
-power = { "**" }
+power = { "^" }
 plus = { "+" }
 minus = { "-" } // Unary and binary
 times = { "*" }
