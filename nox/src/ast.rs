@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::parser::Rule;
 use once_cell::sync::Lazy;
 use pest::iterators::Pair;
@@ -252,4 +254,60 @@ fn parse_boolean(pair: Pair<Rule>) -> anyhow::Result<Expr> {
 fn parse_identifier(pair: Pair<Rule>) -> anyhow::Result<Expr> {
     let s = pair.as_str();
     Ok(Expr::Identifier(s.to_string()))
+}
+
+impl Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Expr::Conditional {
+                condition,
+                then_expr,
+                else_expr,
+            } => {
+                write!(
+                    f,
+                    "(if {} then {} else {})",
+                    condition, then_expr, else_expr
+                )
+            }
+            Expr::Binding { name, value, body } => {
+                write!(f, "(let {} = {} in {})", name, value, body)
+            }
+            Expr::BinaryOp { lhs, op, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
+            Expr::UnaryOp { op, expr } => write!(f, "({} {})", op, expr),
+            Expr::Identifier(s) => write!(f, "{}", s),
+            Expr::Integer(i) => write!(f, "{}", i),
+            Expr::Boolean(b) => write!(f, "{}", b),
+        }
+    }
+}
+
+impl Display for BinaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BinaryOp::Or => write!(f, "or"),
+            BinaryOp::And => write!(f, "and"),
+            BinaryOp::Equal => write!(f, "=="),
+            BinaryOp::NotEqual => write!(f, "!="),
+            BinaryOp::LessThan => write!(f, "<"),
+            BinaryOp::LessThanOrEqual => write!(f, "<="),
+            BinaryOp::GreaterThan => write!(f, ">"),
+            BinaryOp::GreaterThanOrEqual => write!(f, ">="),
+            BinaryOp::Plus => write!(f, "+"),
+            BinaryOp::Minus => write!(f, "-"),
+            BinaryOp::Times => write!(f, "*"),
+            BinaryOp::Divide => write!(f, "/"),
+            BinaryOp::Modulo => write!(f, "%"),
+            BinaryOp::Power => write!(f, "^"),
+        }
+    }
+}
+
+impl Display for UnaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UnaryOp::Negate => write!(f, "-"),
+            UnaryOp::Not => write!(f, "not"),
+        }
+    }
 }

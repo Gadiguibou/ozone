@@ -59,6 +59,7 @@ reserved_keyword = {
   | boolean // "true" | "false"
   | "and"
   | "or"
+  | "not"
 }
 
 literal = { integer | boolean }
@@ -77,7 +78,7 @@ greater_than = { ">" }
 // Logical
 and = { "and" }
 or = { "or" }
-not = { "!" } // Unary only
+not = { "not" } // Unary only
 // Arithmetic
 power = { "^" }
 plus = { "+" }
