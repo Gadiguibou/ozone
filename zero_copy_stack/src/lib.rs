@@ -72,6 +72,12 @@ impl<T> ZeroCopyStack<T> {
     }
 }
 
+impl<T> std::default::Default for ZeroCopyStack<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A handle to a [ZeroCopyStack] that can be used to manipulate the stack temporarily without cloning it.
 ///
 /// When the handle is dropped, the stack is reverted to its original state.
