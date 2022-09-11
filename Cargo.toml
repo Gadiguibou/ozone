@@ -1,13 +1,6 @@
-[package]
-name = "nox"
-version = "0.1.0"
-edition = "2021"
+[workspace]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-anyhow = "1.0.59"
-once_cell = "1.14.0"
-pest = "2.3.0"
-pest_derive = "2.3.0"
-rustc-hash = "1.1.0"
+members = [
+    "nox",
+    "zero_copy_stack"
+]

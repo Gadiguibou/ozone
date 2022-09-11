@@ -1,9 +1,7 @@
 use anyhow::bail;
+use zero_copy_stack::ZeroCopyStackHandle;
 
-use crate::{
-    ast::{BinaryOp, Expr, UnaryOp},
-    zero_copy_stack::ZeroCopyStackHandle,
-};
+use crate::ast::{BinaryOp, Expr, UnaryOp};
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub enum DynValue {

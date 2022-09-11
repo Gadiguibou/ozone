@@ -99,9 +99,19 @@ impl<T> ZeroCopyStackHandle<'_, T> {
         self.stack.len()
     }
 
+    /// Returns `true` if the stack is empty.
+    pub fn is_empty(&self) -> bool {
+        self.stack.is_empty()
+    }
+
     /// Returns the number of elements added to the stack using this handle.
     pub fn relative_len(&self) -> usize {
         self.stack.len() - self.starting_len
+    }
+
+    /// Returns an iterator over the elements in the stack starting from the top.
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.stack.iter().rev()
     }
 
     /// Gets a new [ZeroCopyStackHandle] from this handle.
