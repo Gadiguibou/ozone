@@ -1,6 +1,7 @@
 mod ast;
 mod interpreter;
 mod parser;
+mod zero_copy_stack;
 
 use anyhow::anyhow;
 use parser::Parser;
@@ -9,7 +10,7 @@ use pest::Parser as PestParser;
 use std::io::Write;
 use std::io::{self, BufRead};
 
-use crate::interpreter::Bindings;
+use crate::zero_copy_stack::ZeroCopyStack;
 
 pub fn run_file(path: &str) -> anyhow::Result<()> {
     let contents = std::fs::read_to_string(path)?;
@@ -48,7 +49,8 @@ pub fn run(contents: &str) -> anyhow::Result<()> {
     let ast = ast::Expr::from_pair(expression)?;
     // println!("{ast:#?}");
 
-    let result = interpreter::eval(&ast, &Bindings::default())?;
+    let mut bindings = ZeroCopyStack::new();
+    let result = interpreter::eval(&ast, &mut bindings.handle())?;
     println!("{result:#?}");
 
     Ok(())

@@ -1,6 +1,9 @@
 use anyhow::bail;
 
-use crate::ast::{BinaryOp, Expr, UnaryOp};
+use crate::{
+    ast::{BinaryOp, Expr, UnaryOp},
+    zero_copy_stack::ZeroCopyStackHandle,
+};
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub enum DynValue {
@@ -8,17 +11,17 @@ pub enum DynValue {
     Boolean(bool),
 }
 
-// Uses rustc_hash's FxHasher since bindings need to be fast and don't need to be cryptographically secure.
-pub type Bindings = rustc_hash::FxHashMap<String, Binding>;
+pub type Bindings<'a> = ZeroCopyStackHandle<'a, Binding>;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct Binding {
+    name: String,
     value: DynValue,
     mutable: bool,
 }
 
 /// Evaluates an [Expr].
-pub fn eval(expr: &Expr, bindings: &Bindings) -> anyhow::Result<DynValue> {
+pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
     use DynValue::*;
 
     match expr {
@@ -40,22 +43,13 @@ pub fn eval(expr: &Expr, bindings: &Bindings) -> anyhow::Result<DynValue> {
         }
         Expr::Binding { name, value, body } => {
             let value = eval(value, bindings)?;
-            // TODO: Find a way to avoid cloning bindings when possible.
-            // For example, we could do the following:
-            //  - Use immutable references for immutable bindings and mutable references for mutable bindings. (Cloning the bindings would clone the references.)
-            //  - Create a stack of bindings and pop them off when we exit a binding.
-            //  - Eagerly resolve bindings when building the AST.
-            //  - Use a reference counted pointer to avoid cloning the bindings when there is only one reference to them?
-            //
-            let mut bindings = bindings.clone();
-            bindings.insert(
-                name.clone(),
-                Binding {
-                    value,
-                    mutable: false,
-                },
-            );
-            let body = eval(body, &bindings)?;
+            let mut bindings = bindings.handle();
+            bindings.push(Binding {
+                name: name.clone(),
+                value,
+                mutable: false,
+            });
+            let body = eval(body, &mut bindings)?;
             Ok(body)
         }
         Expr::BinaryOp { op, lhs, rhs } => {
@@ -113,7 +107,7 @@ pub fn eval(expr: &Expr, bindings: &Bindings) -> anyhow::Result<DynValue> {
         Expr::Boolean(boolean) => Ok(Boolean(*boolean)),
         Expr::Identifier(identifier) => {
             let binding = bindings
-                .get(identifier)
+                .find(|binding| binding.name == *identifier)
                 .ok_or_else(|| anyhow::anyhow!("Undefined variable: {}", identifier))?;
             Ok(binding.value.clone())
         }
