@@ -26,9 +26,13 @@ pub enum Expr {
         op: UnaryOp,
         expr: Box<Expr>,
     },
+    Function {
+        parameters: Vec<String>,
+        body: Box<Expr>,
+    },
+    Identifier(String),
     Integer(i64),
     Boolean(bool),
-    Identifier(String),
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
@@ -85,7 +89,7 @@ fn parse_subexpression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
         Rule::conditional_expression => parse_conditional_expression(inner),
         Rule::binding_expression => parse_binding_expression(inner),
         Rule::parenthesized_expression => parse_parenthesized_expression(inner),
-        Rule::prefix_expression => parse_prefix_expression(inner),
+        Rule::function_expression => parse_function_expression(inner),
         Rule::identifier => parse_identifier(inner),
         Rule::literal => parse_literal(inner),
         _ => unreachable!(),
@@ -219,6 +223,24 @@ fn parse_prefix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
     }
 }
 
+/// Parses a [Rule::function_expression].
+fn parse_function_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+    let mut inner = pair.into_inner();
+
+    let parameters = parse_parameter_list(inner.next().unwrap())?;
+    let body = Expr::from_pair(inner.next().unwrap())?;
+
+    Ok(Expr::Function {
+        parameters,
+        body: Box::new(body),
+    })
+}
+
+/// Parses a [Rule::parameter_list].
+fn parse_parameter_list(pair: Pair<Rule>) -> anyhow::Result<Vec<String>> {
+    Ok(pair.into_inner().map(|p| p.as_str().to_string()).collect())
+}
+
 /// Parses a [Rule::literal].
 fn parse_literal(pair: Pair<Rule>) -> anyhow::Result<Expr> {
     let mut inner = pair.into_inner();
@@ -275,6 +297,9 @@ impl Display for Expr {
             }
             Expr::BinaryOp { lhs, op, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
             Expr::UnaryOp { op, expr } => write!(f, "({} {})", op, expr),
+            Expr::Function { parameters, body } => {
+                write!(f, "({}) => {}", parameters.join(", "), body)
+            }
             Expr::Identifier(s) => write!(f, "{}", s),
             Expr::Integer(i) => write!(f, "{}", i),
             Expr::Boolean(b) => write!(f, "{}", b),

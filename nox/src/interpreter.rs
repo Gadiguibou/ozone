@@ -7,6 +7,10 @@ use crate::ast::{BinaryOp, Expr, UnaryOp};
 pub enum DynValue {
     Integer(i64),
     Boolean(bool),
+    Function {
+        parameters: Vec<String>,
+        body: Box<Expr>,
+    },
 }
 
 pub type Bindings<'a> = ZeroCopyStackHandle<'a, Binding>;
@@ -31,7 +35,7 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
             let condition = eval(condition, bindings)?;
             let condition = match condition {
                 Boolean(b) => b,
-                Integer(_) => bail!("Condition must be a boolean"),
+                _ => bail!("Condition must be a boolean"),
             };
             if condition {
                 eval(then_expr, bindings)
@@ -101,13 +105,17 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                 (op, expr) => Err(anyhow::anyhow!("Cannot apply {:?} to {:?}", op, expr)),
             }
         }
-        Expr::Integer(integer) => Ok(Integer(*integer)),
-        Expr::Boolean(boolean) => Ok(Boolean(*boolean)),
+        Expr::Function { parameters, body } => Ok(Function {
+            parameters: parameters.clone(),
+            body: body.clone(),
+        }),
         Expr::Identifier(identifier) => {
             let binding = bindings
                 .find(|binding| binding.name == *identifier)
                 .ok_or_else(|| anyhow::anyhow!("Undefined variable: {}", identifier))?;
             Ok(binding.value.clone())
         }
+        Expr::Integer(integer) => Ok(Integer(*integer)),
+        Expr::Boolean(boolean) => Ok(Boolean(*boolean)),
     }
 }

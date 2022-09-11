@@ -173,4 +173,31 @@ mod tests {
 
         assert_eq!(result, DynValue::Integer(19));
     }
+
+    #[test]
+    fn test_function_expression() {
+        let program = "let function = (a, b) => a + b in function";
+
+        let run = run(program);
+        assert!(run.is_ok());
+
+        let (ast, result) = run.unwrap();
+
+        assert_eq!(
+            format!("{ast}"),
+            "(let function = (a, b) => (a + b) in function)"
+        );
+
+        assert_eq!(
+            result,
+            DynValue::Function {
+                parameters: vec!["a".to_string(), "b".to_string()],
+                body: Box::new(Expr::BinaryOp {
+                    lhs: Box::new(Expr::Identifier("a".to_string())),
+                    op: ast::BinaryOp::Plus,
+                    rhs: Box::new(Expr::Identifier("b".to_string()))
+                })
+            }
+        );
+    }
 }

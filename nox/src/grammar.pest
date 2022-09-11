@@ -5,19 +5,20 @@ file = { SOI ~ expression ~ EOI }
 
 expression = {
     prefix_expression
-  | infix_expression }
+  | infix_expression
+}
 
 subexpression = {
       conditional_expression
     | binding_expression
     | parenthesized_expression
-    | prefix_expression
+    // | function_application
+    | function_expression
     | identifier
     | literal
 }
 
-conditional_expression = { "if" ~ expression ~ "then" ~ expression ~ "else" ~ expression }
-binding_expression = { "let" ~ identifier ~ "=" ~ expression ~ "in" ~ expression }
+prefix_expression = { minus ~ subexpression | not ~ subexpression }
 
 infix_expression = {
   subexpression ~ ((
@@ -44,9 +45,25 @@ infix_expression = {
     ) ~ subexpression)*
 }
 
-parenthesized_expression = { "(" ~ expression ~ ")"}
+function_expression = {
+  "(" ~ parameter_list ~ ")" ~ "=>" ~ expression
+}
 
-prefix_expression = { minus ~ subexpression | not ~ subexpression }
+parameter_list = {
+  identifier ~ ("," ~ identifier)* ~ ","?
+}
+
+// function_application = {
+//   identifier ~ "(" ~ argument_list ~ ")"
+// }
+
+// argument_list = {
+//   expression ~ ("," ~ expression)* ~ ","?
+// }
+
+conditional_expression = { "if" ~ expression ~ "then" ~ expression ~ "else" ~ expression }
+binding_expression = { "let" ~ identifier ~ "=" ~ expression ~ "in" ~ expression }
+parenthesized_expression = { "(" ~ expression ~ ")"}
 
 identifier = @{ !(reserved_keyword ~ !XID_CONTINUE) ~ XID_START ~ (XID_CONTINUE)* }
 // TODO: Report a custom error when someone tries to use a reserved keyword as an identifier instead of raising a parsing error.
