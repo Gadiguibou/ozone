@@ -48,7 +48,18 @@ parenthesized_expression = { "(" ~ expression ~ ")"}
 
 prefix_expression = { minus ~ subexpression | not ~ subexpression }
 
-identifier = @{ XID_START ~ (XID_CONTINUE)* }
+identifier = @{ !(reserved_keyword ~ !XID_CONTINUE) ~ XID_START ~ (XID_CONTINUE)* }
+// TODO: Report a custom error when someone tries to use a reserved keyword as an identifier instead of raising a parsing error.
+reserved_keyword = {
+    "if"
+  | "then"
+  | "else"
+  | "let"
+  | "in"
+  | boolean // "true" | "false"
+  | "and"
+  | "or"
+}
 
 literal = { integer | boolean }
 
