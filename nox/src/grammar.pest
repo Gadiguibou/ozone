@@ -11,17 +11,16 @@ expression = {
 subexpression = {
       conditional_expression
     | binding_expression
-    | parenthesized_expression
-    // | function_application
     | function_expression
+    | parenthesized_expression
     | identifier
     | literal
 }
 
-prefix_expression = { minus ~ subexpression | not ~ subexpression }
+prefix_expression = { minus ~ postfix_expression | not ~ postfix_expression }
 
 infix_expression = {
-  subexpression ~ ((
+  postfix_expression ~ ((
         // Operator precedence is defined in `ast::parse_infix_expression`.
         // IMPORTANT: Multiple character tokens should be listed first to ensure they are parsed correctly
         // Logical
@@ -42,7 +41,11 @@ infix_expression = {
         | times
         | divide
         | modulo
-    ) ~ subexpression)*
+    ) ~ postfix_expression)*
+}
+
+postfix_expression = {
+  function_application | subexpression
 }
 
 function_expression = {
@@ -50,16 +53,16 @@ function_expression = {
 }
 
 parameter_list = {
-  identifier ~ ("," ~ identifier)* ~ ","?
+  ( identifier ~ ("," ~ identifier)* ~ ","? )?
 }
 
-// function_application = {
-//   identifier ~ "(" ~ argument_list ~ ")"
-// }
+function_application = {
+  subexpression ~ ("(" ~ argument_list ~ ")")+
+}
 
-// argument_list = {
-//   expression ~ ("," ~ expression)* ~ ","?
-// }
+argument_list = {
+  ( expression ~ ("," ~ expression)* ~ ","? )?
+}
 
 conditional_expression = { "if" ~ expression ~ "then" ~ expression ~ "else" ~ expression }
 binding_expression = { "let" ~ identifier ~ "=" ~ expression ~ "in" ~ expression }

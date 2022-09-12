@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use anyhow::bail;
 use zero_copy_stack::ZeroCopyStackHandle;
 
@@ -11,6 +13,18 @@ pub enum DynValue {
         parameters: Vec<String>,
         body: Box<Expr>,
     },
+}
+
+impl Display for DynValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DynValue::Integer(i) => write!(f, "{}", i),
+            DynValue::Boolean(b) => write!(f, "{}", b),
+            DynValue::Function { parameters, body } => {
+                write!(f, "({}) => ({})", parameters.join(", "), body)
+            }
+        }
+    }
 }
 
 pub type Bindings<'a> = ZeroCopyStackHandle<'a, Binding>;
@@ -103,6 +117,45 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                 (Negate, Integer(expr)) => Ok(Integer(-expr)),
                 (Not, Boolean(expr)) => Ok(Boolean(!expr)),
                 (op, expr) => Err(anyhow::anyhow!("Cannot apply {:?} to {:?}", op, expr)),
+            }
+        }
+        Expr::FunctionApplication {
+            function,
+            arguments,
+        } => {
+            let function = eval(function, bindings)?;
+
+            if !matches!(&function, DynValue::Function { .. }) {
+                bail!("`{}` is not a function", function)
+            }
+
+            let arguments = arguments
+                .iter()
+                .map(|arg| eval(arg, bindings))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+
+            match function {
+                DynValue::Function { parameters, body } => {
+                    if parameters.len() != arguments.len() {
+                        bail!(
+                            "Expected {} arguments but got {}",
+                            parameters.len(),
+                            arguments.len()
+                        )
+                    }
+
+                    let mut bindings = bindings.handle();
+                    for (parameter, argument) in parameters.into_iter().zip(arguments) {
+                        bindings.push(Binding {
+                            name: parameter,
+                            value: argument,
+                            mutable: false,
+                        });
+                    }
+
+                    eval(&*body, &mut bindings)
+                }
+                _ => unreachable!(),
             }
         }
         Expr::Function { parameters, body } => Ok(Function {

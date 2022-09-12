@@ -5,6 +5,7 @@ use once_cell::sync::Lazy;
 use pest::iterators::Pair;
 use pest::prec_climber::{Assoc, Operator, PrecClimber};
 
+// TODO: Add error reporting capabilities here by keeping the span associated with each node
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub enum Expr {
     Conditional {
@@ -25,6 +26,10 @@ pub enum Expr {
     UnaryOp {
         op: UnaryOp,
         expr: Box<Expr>,
+    },
+    FunctionApplication {
+        function: Box<Expr>,
+        arguments: Vec<Expr>,
     },
     Function {
         parameters: Vec<String>,
@@ -80,50 +85,31 @@ impl Expr {
     }
 }
 
-/// Parses a [Rule::subexpression].
-fn parse_subexpression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
-    let inner = pair.into_inner().next().unwrap();
-
-    match inner.as_rule() {
-        Rule::infix_expression => parse_infix_expression(inner),
-        Rule::conditional_expression => parse_conditional_expression(inner),
-        Rule::binding_expression => parse_binding_expression(inner),
-        Rule::parenthesized_expression => parse_parenthesized_expression(inner),
-        Rule::function_expression => parse_function_expression(inner),
-        Rule::identifier => parse_identifier(inner),
-        Rule::literal => parse_literal(inner),
+/// Parses a [Rule::prefix_expression].
+fn parse_prefix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+    let mut inner = pair.into_inner();
+    let (first, second) = (inner.next(), inner.next());
+    // first is always present
+    let first = first.unwrap();
+    match first.as_rule() {
+        Rule::minus => {
+            let subexpression = parse_postfix_expression(second.unwrap())?;
+            Ok(Expr::UnaryOp {
+                op: UnaryOp::Negate,
+                expr: Box::new(subexpression),
+            })
+        }
+        Rule::not => {
+            let subexpression = parse_postfix_expression(second.unwrap())?;
+            Ok(Expr::UnaryOp {
+                op: UnaryOp::Not,
+                expr: Box::new(subexpression),
+            })
+        }
+        Rule::literal => parse_literal(first),
+        Rule::identifier => parse_identifier(first),
         _ => unreachable!(),
     }
-}
-
-/// Parses a [Rule::conditional_expression].
-fn parse_conditional_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
-    let mut inner = pair.into_inner();
-
-    let condition = inner.next().unwrap();
-    let then_expr = inner.next().unwrap();
-    let else_expr = inner.next().unwrap();
-
-    Ok(Expr::Conditional {
-        condition: Box::new(Expr::from_pair(condition)?),
-        then_expr: Box::new(Expr::from_pair(then_expr)?),
-        else_expr: Box::new(Expr::from_pair(else_expr)?),
-    })
-}
-
-/// Parses a [Rule::binding_expression].
-fn parse_binding_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
-    let mut inner = pair.into_inner();
-
-    let name = inner.next().unwrap();
-    let value = inner.next().unwrap();
-    let body = inner.next().unwrap();
-
-    Ok(Expr::Binding {
-        name: name.as_str().to_string(),
-        value: Box::new(Expr::from_pair(value)?),
-        body: Box::new(Expr::from_pair(body)?),
-    })
 }
 
 /// Parses a [Rule::infix_expression].
@@ -184,7 +170,64 @@ fn parse_infix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
         })
     }
 
-    PREC_CLIMBER.climb(pair.into_inner(), parse_subexpression, infix)
+    PREC_CLIMBER.climb(pair.into_inner(), parse_postfix_expression, infix)
+}
+
+/// Parses a [Rule::postfix_expression].
+fn parse_postfix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+    let inner = pair.into_inner().next().unwrap();
+
+    match inner.as_rule() {
+        Rule::function_application => parse_function_application(inner),
+        Rule::subexpression => parse_subexpression(inner),
+        _ => unreachable!(),
+    }
+}
+
+/// Parses a [Rule::subexpression].
+fn parse_subexpression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+    let inner = pair.into_inner().next().unwrap();
+
+    match inner.as_rule() {
+        Rule::infix_expression => parse_infix_expression(inner),
+        Rule::conditional_expression => parse_conditional_expression(inner),
+        Rule::binding_expression => parse_binding_expression(inner),
+        Rule::parenthesized_expression => parse_parenthesized_expression(inner),
+        Rule::function_expression => parse_function_expression(inner),
+        Rule::identifier => parse_identifier(inner),
+        Rule::literal => parse_literal(inner),
+        _ => unreachable!(),
+    }
+}
+
+/// Parses a [Rule::conditional_expression].
+fn parse_conditional_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+    let mut inner = pair.into_inner();
+
+    let condition = inner.next().unwrap();
+    let then_expr = inner.next().unwrap();
+    let else_expr = inner.next().unwrap();
+
+    Ok(Expr::Conditional {
+        condition: Box::new(Expr::from_pair(condition)?),
+        then_expr: Box::new(Expr::from_pair(then_expr)?),
+        else_expr: Box::new(Expr::from_pair(else_expr)?),
+    })
+}
+
+/// Parses a [Rule::binding_expression].
+fn parse_binding_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+    let mut inner = pair.into_inner();
+
+    let name = inner.next().unwrap();
+    let value = inner.next().unwrap();
+    let body = inner.next().unwrap();
+
+    Ok(Expr::Binding {
+        name: name.as_str().to_string(),
+        value: Box::new(Expr::from_pair(value)?),
+        body: Box::new(Expr::from_pair(body)?),
+    })
 }
 
 /// Parses a [Rule::parenthesized_expression].
@@ -192,33 +235,6 @@ fn parse_parenthesized_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
     let inner = unsafe { pair.into_inner().next().unwrap_unchecked() };
     match inner.as_rule() {
         Rule::expression => Expr::from_pair(inner),
-        _ => unreachable!(),
-    }
-}
-
-/// Parses a [Rule::prefix_expression].
-fn parse_prefix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
-    let mut inner = pair.into_inner();
-    let (first, second) = (inner.next(), inner.next());
-    // first is always present
-    let first = first.unwrap();
-    match first.as_rule() {
-        Rule::minus => {
-            let subexpression = parse_subexpression(second.unwrap())?;
-            Ok(Expr::UnaryOp {
-                op: UnaryOp::Negate,
-                expr: Box::new(subexpression),
-            })
-        }
-        Rule::not => {
-            let subexpression = parse_subexpression(second.unwrap())?;
-            Ok(Expr::UnaryOp {
-                op: UnaryOp::Not,
-                expr: Box::new(subexpression),
-            })
-        }
-        Rule::literal => parse_literal(first),
-        Rule::identifier => parse_identifier(first),
         _ => unreachable!(),
     }
 }
@@ -234,6 +250,33 @@ fn parse_function_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
         parameters,
         body: Box::new(body),
     })
+}
+
+/// Parses a [Rule::function_application].
+fn parse_function_application(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+    let mut inner = pair.into_inner();
+
+    let function = parse_subexpression(inner.next().unwrap())?;
+    let argument_lists = inner
+        .map(parse_argument_list)
+        .collect::<anyhow::Result<Vec<_>>>()?;
+
+    // "Left-associate" function applications.
+    let function_application = argument_lists
+        .into_iter()
+        .fold(function, |function, arguments| Expr::FunctionApplication {
+            function: Box::new(function),
+            arguments,
+        });
+
+    Ok(function_application)
+}
+
+/// Parses a [Rule::argument_list].
+fn parse_argument_list(pair: Pair<Rule>) -> anyhow::Result<Vec<Expr>> {
+    pair.into_inner()
+        .map(Expr::from_pair)
+        .collect::<anyhow::Result<_>>()
 }
 
 /// Parses a [Rule::parameter_list].
@@ -297,8 +340,23 @@ impl Display for Expr {
             }
             Expr::BinaryOp { lhs, op, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
             Expr::UnaryOp { op, expr } => write!(f, "({} {})", op, expr),
+            Expr::FunctionApplication {
+                function,
+                arguments,
+            } => {
+                write!(
+                    f,
+                    "({}({}))",
+                    function,
+                    arguments
+                        .iter()
+                        .map(|s| format!("{s}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
             Expr::Function { parameters, body } => {
-                write!(f, "({}) => {}", parameters.join(", "), body)
+                write!(f, "({}) => ({})", parameters.join(", "), body)
             }
             Expr::Identifier(s) => write!(f, "{}", s),
             Expr::Integer(i) => write!(f, "{}", i),

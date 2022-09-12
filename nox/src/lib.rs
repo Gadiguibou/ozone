@@ -51,7 +51,7 @@ pub fn run(contents: &str) -> anyhow::Result<()> {
 
     let mut bindings = zero_copy_stack::ZeroCopyStack::new();
     let result = interpreter::eval(&ast, &mut bindings.handle())?;
-    println!("{result:#?}");
+    println!("{result}");
 
     Ok(())
 }
@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_function_expression() {
-        let program = "let function = (a, b) => a + b in function";
+        let program = "let add = (a, b) => a + b in add";
 
         let run = run(program);
         assert!(run.is_ok());
@@ -185,7 +185,7 @@ mod tests {
 
         assert_eq!(
             format!("{ast}"),
-            "(let function = (a, b) => (a + b) in function)"
+            "(let add = (a, b) => ((a + b)) in add)"
         );
 
         assert_eq!(
@@ -199,5 +199,44 @@ mod tests {
                 })
             }
         );
+    }
+
+    #[test]
+    fn test_function_application() {
+        let program = "let add = (a, b) => a + b in add(1, 2)";
+
+        let run = run(program);
+        assert!(run.is_ok());
+
+        let (ast, result) = run.unwrap();
+
+        assert_eq!(
+            format!("{ast}"),
+            "(let add = (a, b) => ((a + b)) in (add(1, 2)))"
+        );
+
+        assert_eq!(result, DynValue::Integer(3));
+    }
+
+    #[test]
+    fn test_function_application_has_highest_precedence() {
+        let program = "
+            let fn1 = () => (
+                () => 1
+            ) in
+            -fn1()()
+        ";
+
+        let run = run(program);
+        assert!(run.is_ok());
+
+        let (ast, result) = run.unwrap();
+
+        assert_eq!(
+            format!("{ast}"),
+            "(let fn1 = () => (() => (1)) in (- ((fn1())())))"
+        );
+
+        assert_eq!(result, DynValue::Integer(-1));
     }
 }
