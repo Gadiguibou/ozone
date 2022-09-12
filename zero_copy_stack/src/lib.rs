@@ -78,6 +78,14 @@ impl<T> std::default::Default for ZeroCopyStack<T> {
     }
 }
 
+impl<T> std::iter::FromIterator<T> for ZeroCopyStack<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self {
+            stack: Vec::from_iter(iter),
+        }
+    }
+}
+
 /// A handle to a [ZeroCopyStack] that can be used to manipulate the stack temporarily without cloning it.
 ///
 /// When the handle is dropped, the stack is reverted to its original state.
@@ -95,9 +103,9 @@ impl<T> ZeroCopyStackHandle<'_, T> {
         self.stack.push(value)
     }
 
-    /// Gets an element at a specific index in the stack starting from the top.
+    /// Gets an element at a specific index in the stack starting from the bottom.
     pub fn get(&self, index: usize) -> Option<&T> {
-        self.stack.get(self.stack.len() - 1 - index)
+        self.stack.get(index)
     }
 
     /// Returns the number of elements in the stack.
@@ -115,9 +123,9 @@ impl<T> ZeroCopyStackHandle<'_, T> {
         self.stack.len() - self.starting_len
     }
 
-    /// Returns an iterator over the elements in the stack starting from the top.
+    /// Returns an iterator over the elements in the stack starting from the bottom.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.stack.iter().rev()
+        self.stack.iter()
     }
 
     /// Gets a new [ZeroCopyStackHandle] from this handle.
@@ -139,6 +147,11 @@ where
         P: Fn(&T) -> bool,
     {
         self.stack.iter().rev().find(|x| predicate(x))
+    }
+
+    /// Returns `true` if the stack contains an element with the given value.
+    pub fn contains(&self, x: &T) -> bool {
+        self.stack.contains(x)
     }
 }
 
