@@ -219,9 +219,53 @@ mod tests {
 
         assert_eq!(
             format!("{ast}"),
-            "(let fn1 = () => (() => (1)) in (- ((fn1())())))"
+            "(let fn1 = () => (() => (1)) in (-((fn1())())))"
         );
 
         assert_eq!(result, DynValue::Integer(-1));
+    }
+
+    #[test]
+    fn test_function_application_has_static_scoping() {
+        let program = "
+            let fn1 = (
+                let x = 1 in
+                () => x
+            ) in
+            let x = 2 in
+            fn1()
+        ";
+
+        let run = run(program);
+        assert!(run.is_ok());
+
+        let (_, result) = run.unwrap();
+
+        assert_eq!(result, DynValue::Integer(1));
+    }
+
+    #[test]
+    fn test_recursive_binding_works() {
+        let program = "
+            let rec fib = (n) =>
+                if n <= 1 then
+                    n
+                else
+                    fib(n - 1) + fib(n - 2)
+            in
+                fib(10)
+        ";
+
+        let run = run(program);
+        assert!(run.is_ok());
+
+        let (ast, result) = run.unwrap();
+
+        assert_eq!(
+            format!("{ast}"),
+            "(let rec fib = (n) => ((if (n <= 1) then n else ((fib((n - 1))) + (fib((n - 2)))))) in (fib(10)))"
+        );
+
+        assert_eq!(result, DynValue::Integer(55));
     }
 }

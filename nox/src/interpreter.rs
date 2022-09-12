@@ -14,6 +14,8 @@ pub enum DynValue {
         captured_bindings: ZeroCopyStack<Binding>,
         body: Box<Expr>,
     },
+    /// Used in recursive bindings to allow referencing the binding itself.
+    Lazy(Box<Expr>),
 }
 
 impl Display for DynValue {
@@ -26,6 +28,7 @@ impl Display for DynValue {
             } => {
                 write!(f, "({}) => ({})", parameters.join(", "), body)
             }
+            DynValue::Lazy(_) => write!(f, "<lazy>"),
         }
     }
 }
@@ -60,8 +63,23 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                 eval(else_expr, bindings)
             }
         }
-        Expr::Binding { name, value, body } => {
-            let value = eval(value, bindings)?;
+        Expr::Binding {
+            name,
+            recursive,
+            value,
+            body,
+        } => {
+            let value = if *recursive {
+                let mut bindings = bindings.handle();
+                bindings.push(Binding {
+                    name: name.clone(),
+                    value: Lazy(value.clone()),
+                    mutable: false,
+                });
+                eval(value, &mut bindings)?
+            } else {
+                eval(value, bindings)?
+            };
             let mut bindings = bindings.handle();
             bindings.push(Binding {
                 name: name.clone(),
@@ -178,7 +196,13 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
             let binding = bindings
                 .find(|binding| binding.name == *identifier)
                 .ok_or_else(|| anyhow::anyhow!("Undefined variable: {}", identifier))?;
-            Ok(binding.value.clone())
+
+            let value = binding.value.clone();
+
+            match value {
+                Lazy(expr) => eval(&*expr, bindings),
+                _ => Ok(value),
+            }
         }
         Expr::Integer(integer) => Ok(Integer(*integer)),
         Expr::Boolean(boolean) => Ok(Boolean(*boolean)),

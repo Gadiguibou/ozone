@@ -65,7 +65,7 @@ argument_list = {
 }
 
 conditional_expression = { "if" ~ expression ~ "then" ~ expression ~ "else" ~ expression }
-binding_expression = { "let" ~ identifier ~ "=" ~ expression ~ "in" ~ expression }
+binding_expression = { "let" ~ ( rec )? ~ identifier ~ "=" ~ expression ~ "in" ~ expression }
 parenthesized_expression = { "(" ~ expression ~ ")"}
 
 identifier = @{ !(reserved_keyword ~ !XID_CONTINUE) ~ XID_START ~ (XID_CONTINUE)* }
@@ -80,9 +80,12 @@ reserved_keyword = {
   | "and"
   | "or"
   | "not"
+  | "rec"
 }
 
 literal = { integer | boolean }
+
+rec = { "rec" }
 
 integer = @{ '0'..'9' ~ ( '0'..'9' | "_" )* }
 boolean = { "true" | "false" }

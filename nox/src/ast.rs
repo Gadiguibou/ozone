@@ -15,6 +15,7 @@ pub enum Expr {
     },
     Binding {
         name: String,
+        recursive: bool,
         value: Box<Expr>,
         body: Box<Expr>,
     },
@@ -219,12 +220,19 @@ fn parse_conditional_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
 fn parse_binding_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
     let mut inner = pair.into_inner();
 
-    let name = inner.next().unwrap();
+    let (recursive, name) = {
+        let next = inner.next().unwrap();
+        match next.as_rule() {
+            Rule::rec => (true, inner.next().unwrap()),
+            _ => (false, next),
+        }
+    };
     let value = inner.next().unwrap();
     let body = inner.next().unwrap();
 
     Ok(Expr::Binding {
         name: name.as_str().to_string(),
+        recursive,
         value: Box::new(Expr::from_pair(value)?),
         body: Box::new(Expr::from_pair(body)?),
     })
@@ -335,11 +343,23 @@ impl Display for Expr {
                     condition, then_expr, else_expr
                 )
             }
-            Expr::Binding { name, value, body } => {
-                write!(f, "(let {} = {} in {})", name, value, body)
+            Expr::Binding {
+                name,
+                recursive,
+                value,
+                body,
+            } => {
+                write!(
+                    f,
+                    "(let {}{} = {} in {})",
+                    if *recursive { "rec " } else { "" },
+                    name,
+                    value,
+                    body
+                )
             }
             Expr::BinaryOp { lhs, op, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
-            Expr::UnaryOp { op, expr } => write!(f, "({} {})", op, expr),
+            Expr::UnaryOp { op, expr } => write!(f, "({}{})", op, expr),
             Expr::FunctionApplication {
                 function,
                 arguments,
@@ -390,7 +410,7 @@ impl Display for UnaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             UnaryOp::Negate => write!(f, "-"),
-            UnaryOp::Not => write!(f, "not"),
+            UnaryOp::Not => write!(f, "not "),
         }
     }
 }
