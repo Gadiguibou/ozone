@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use anyhow::bail;
-use zero_copy_stack::ZeroCopyStackHandle;
+use zero_copy_stack::{ZeroCopyStack, ZeroCopyStackHandle};
 
 use crate::ast::{BinaryOp, Expr, UnaryOp};
 
@@ -11,6 +11,7 @@ pub enum DynValue {
     Boolean(bool),
     Function {
         parameters: Vec<String>,
+        captured_bindings: ZeroCopyStack<Binding>,
         body: Box<Expr>,
     },
 }
@@ -20,7 +21,9 @@ impl Display for DynValue {
         match self {
             DynValue::Integer(i) => write!(f, "{}", i),
             DynValue::Boolean(b) => write!(f, "{}", b),
-            DynValue::Function { parameters, body } => {
+            DynValue::Function {
+                parameters, body, ..
+            } => {
                 write!(f, "({}) => ({})", parameters.join(", "), body)
             }
         }
@@ -135,7 +138,11 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                 .collect::<anyhow::Result<Vec<_>>>()?;
 
             match function {
-                DynValue::Function { parameters, body } => {
+                DynValue::Function {
+                    parameters,
+                    mut captured_bindings,
+                    body,
+                } => {
                     if parameters.len() != arguments.len() {
                         bail!(
                             "Expected {} arguments but got {}",
@@ -144,7 +151,7 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                         )
                     }
 
-                    let mut bindings = bindings.handle();
+                    let mut bindings = captured_bindings.handle();
                     for (parameter, argument) in parameters.into_iter().zip(arguments) {
                         bindings.push(Binding {
                             name: parameter,
@@ -158,10 +165,15 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                 _ => unreachable!(),
             }
         }
-        Expr::Function { parameters, body } => Ok(Function {
-            parameters: parameters.clone(),
-            body: body.clone(),
-        }),
+        Expr::Function { parameters, body } => {
+            // TODO: Capture only the bindings which are used in the function body.
+            let captured_bindings = bindings.iter().map(Clone::clone).collect();
+            Ok(Function {
+                parameters: parameters.clone(),
+                captured_bindings,
+                body: body.clone(),
+            })
+        }
         Expr::Identifier(identifier) => {
             let binding = bindings
                 .find(|binding| binding.name == *identifier)

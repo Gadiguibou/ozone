@@ -181,24 +181,9 @@ mod tests {
         let run = run(program);
         assert!(run.is_ok());
 
-        let (ast, result) = run.unwrap();
+        let (ast, _) = run.unwrap();
 
-        assert_eq!(
-            format!("{ast}"),
-            "(let add = (a, b) => ((a + b)) in add)"
-        );
-
-        assert_eq!(
-            result,
-            DynValue::Function {
-                parameters: vec!["a".to_string(), "b".to_string()],
-                body: Box::new(Expr::BinaryOp {
-                    lhs: Box::new(Expr::Identifier("a".to_string())),
-                    op: ast::BinaryOp::Plus,
-                    rhs: Box::new(Expr::Identifier("b".to_string()))
-                })
-            }
-        );
+        assert_eq!(format!("{ast}"), "(let add = (a, b) => ((a + b)) in add)");
     }
 
     #[test]
