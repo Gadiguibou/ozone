@@ -3,6 +3,7 @@ mod interpreter;
 mod parser;
 #[cfg(test)]
 mod tests;
+mod typed_ast;
 
 use anyhow::anyhow;
 use parser::Parser;

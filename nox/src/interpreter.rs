@@ -111,6 +111,7 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                     Ok(Integer(lhs.pow(rhs as u32)))
                 }
                 // Equality
+                // TODO: This is missing equality for custom types.
                 (Integer(lhs), Equal, Integer(rhs)) => Ok(Boolean(lhs == rhs)),
                 (Integer(lhs), NotEqual, Integer(rhs)) => Ok(Boolean(lhs != rhs)),
                 // Ordering

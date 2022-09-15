@@ -70,6 +70,31 @@ impl<T> ZeroCopyStack<T> {
             stack: &mut self.stack,
         }
     }
+
+    /// Pushes a value onto the stack.
+    pub fn push(&mut self, value: T) {
+        self.stack.push(value)
+    }
+
+    /// Gets an element at a specific index in the stack starting from the bottom.
+    pub fn get(&self, index: usize) -> Option<&T> {
+        self.stack.get(index)
+    }
+
+    /// Returns the number of elements in the stack.
+    pub fn len(&self) -> usize {
+        self.stack.len()
+    }
+
+    /// Returns `true` if the stack is empty.
+    pub fn is_empty(&self) -> bool {
+        self.stack.is_empty()
+    }
+
+    /// Returns an iterator over the elements in the stack starting from the bottom.
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.stack.iter()
+    }
 }
 
 impl<T> std::default::Default for ZeroCopyStack<T> {
@@ -83,6 +108,24 @@ impl<T> std::iter::FromIterator<T> for ZeroCopyStack<T> {
         Self {
             stack: Vec::from_iter(iter),
         }
+    }
+}
+
+impl<T> ZeroCopyStack<T>
+    where
+        T: PartialEq,
+{
+    /// Searches for an element satisfying the predicate, starting from the top of the stack.
+    pub fn find<P>(&self, predicate: P) -> Option<&T>
+        where
+            P: Fn(&T) -> bool,
+    {
+        self.stack.iter().rev().find(|x| predicate(x))
+    }
+
+    /// Returns `true` if the stack contains an element with the given value.
+    pub fn contains(&self, x: &T) -> bool {
+        self.stack.contains(x)
     }
 }
 
