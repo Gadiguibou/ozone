@@ -1,40 +1,41 @@
 use super::*;
 
-use ast::Expr;
+use ast::Ast;
 use interpreter::DynValue;
 use typed_ast::Type;
 
-fn run(contents: &str) -> anyhow::Result<(Expr, DynValue)> {
-    let parse = Parser::parse(Rule::file, contents);
+fn build_ast(contents: &str) -> anyhow::Result<Ast> {
+    let parse = Parser::parse(Rule::file, contents)?;
 
-    let expression = unsafe {
-        parse?
-            // Get file
-            .next()
-            .unwrap_unchecked()
-            // Get expression
-            .into_inner()
-            .next()
-            .unwrap_unchecked()
-    };
+    Ast::try_from(parse)
+}
 
-    let ast = Expr::from_pair(expression)?;
-
+fn eval(ast: &Ast) -> anyhow::Result<DynValue> {
     let mut bindings = zero_copy_stack::ZeroCopyStack::new();
-    let result = interpreter::eval(&ast, &mut bindings.handle())?;
-    Ok((ast, result))
+    let mut handle = bindings.handle();
+    interpreter::eval(&ast.root, &mut handle)
+}
+
+fn typecheck(ast: &Ast) -> anyhow::Result<typed_ast::TypedAst> {
+    typed_ast::TypedAst::from(ast.clone())
 }
 
 #[test]
 fn test_arithmetic_expression() {
     let program = "3 - (2 + 2) + 4 * 2 ^ 2 ^ 3";
 
-    let run = run(program);
-    assert!(run.is_ok());
+    let ast = build_ast(program);
+    assert!(ast.is_ok());
+    let ast = ast.unwrap();
 
-    let (ast, result) = run.unwrap();
+    let result = eval(&ast);
+    assert!(result.is_ok());
+    let result = result.unwrap();
 
-    assert_eq!(format!("{ast}"), "((3 - (2 + 2)) + (4 * (2 ^ (2 ^ 3))))");
+    assert_eq!(
+        ast,
+        build_ast("((3 - (2 + 2)) + (4 * (2 ^ (2 ^ 3))))").unwrap()
+    );
     assert_eq!(result, DynValue::Integer(1023));
 }
 
@@ -47,14 +48,17 @@ fn test_binding_expression() {
             (let test = 0 in 0 /* Should not shadow the top-level binding */) + test
         ";
 
-    let run = run(program);
-    assert!(run.is_ok());
+    let ast = build_ast(program);
+    assert!(ast.is_ok());
+    let ast = ast.unwrap();
 
-    let (ast, result) = run.unwrap();
+    let result = eval(&ast);
+    assert!(result.is_ok());
+    let result = result.unwrap();
 
     assert_eq!(
-        format!("{ast}"),
-        "(let test = 1 in ((let test = 0 in 0) + test))"
+        ast,
+        build_ast("let test = 1 in ((let test = 0 in 0) + test)").unwrap()
     );
 
     assert_eq!(result, DynValue::Integer(1));
@@ -69,9 +73,14 @@ fn test_binding_expression_fails_on_unbound_variables() {
             test2
         ";
 
-    let run = run(program);
-    assert!(run.is_err());
-    assert_eq!(run.unwrap_err().to_string(), "Undefined variable: test2");
+    let ast = build_ast(program);
+    assert!(ast.is_ok());
+    let ast = ast.unwrap();
+
+    let result = eval(&ast);
+    assert!(result.is_err());
+
+    assert_eq!(result.unwrap_err().to_string(), "Undefined variable: test2");
 }
 
 #[test]
@@ -85,15 +94,28 @@ fn test_conditionals() {
             false
         ";
 
-    let run = run(program);
-    assert!(run.is_ok());
+    let ast = build_ast(program);
+    assert!(ast.is_ok());
+    let ast = ast.unwrap();
 
-    let (ast, result) = run.unwrap();
+    let result = eval(&ast);
+    assert!(result.is_ok());
+    let result = result.unwrap();
 
     assert_eq!(
-            format!("{ast}"),
-            "(if ((1 > 0) and ((1 <= 0) or false)) then false else (if (if ((0 == 1) or (0 != 1)) then true else false) then (not false) else false))"
-        );
+        ast,
+        build_ast(
+            "
+            if ((1 > 0) and ((1 <= 0) or false)) then
+                false
+            else (if (if ((0 == 1) or (0 != 1)) then true else false) then
+                (not false)
+            else
+                false)
+            "
+        )
+        .unwrap()
+    );
 
     assert_eq!(result, DynValue::Boolean(true));
 }
@@ -102,14 +124,17 @@ fn test_conditionals() {
 fn test_nested_expressions() {
     let program = "1 + if false then 2 else 3 + 4 + let test = 5 in test + 6";
 
-    let run = run(program);
-    assert!(run.is_ok());
+    let ast = build_ast(program);
+    assert!(ast.is_ok());
+    let ast = ast.unwrap();
 
-    let (ast, result) = run.unwrap();
+    let result = eval(&ast);
+    assert!(result.is_ok());
+    let result = result.unwrap();
 
     assert_eq!(
-        format!("{ast}"),
-        "(1 + (if false then 2 else ((3 + 4) + (let test = 5 in (test + 6)))))"
+        ast,
+        build_ast("(1 + (if false then 2 else ((3 + 4) + (let test = 5 in (test + 6)))))").unwrap()
     );
 
     assert_eq!(result, DynValue::Integer(19));
@@ -119,26 +144,34 @@ fn test_nested_expressions() {
 fn test_function_expression() {
     let program = "let add = (a, b) => a + b in add";
 
-    let run = run(program);
-    assert!(run.is_ok());
+    let ast = build_ast(program);
+    assert!(ast.is_ok());
+    let ast = ast.unwrap();
 
-    let (ast, _) = run.unwrap();
+    let result = eval(&ast);
+    assert!(result.is_ok());
 
-    assert_eq!(format!("{ast}"), "(let add = (a, b) => ((a + b)) in add)");
+    assert_eq!(
+        ast,
+        build_ast("(let add = (a, b) => (a + b) in add)").unwrap()
+    );
 }
 
 #[test]
 fn test_function_application() {
     let program = "let add = (a, b) => a + b in add(1, 2)";
 
-    let run = run(program);
-    assert!(run.is_ok());
+    let ast = build_ast(program);
+    assert!(ast.is_ok());
+    let ast = ast.unwrap();
 
-    let (ast, result) = run.unwrap();
+    let result = eval(&ast);
+    assert!(result.is_ok());
+    let result = result.unwrap();
 
     assert_eq!(
-        format!("{ast}"),
-        "(let add = (a, b) => ((a + b)) in (add(1, 2)))"
+        ast,
+        build_ast("(let add = (a, b) => ((a + b)) in (add(1, 2)))").unwrap()
     );
 
     assert_eq!(result, DynValue::Integer(3));
@@ -153,14 +186,17 @@ fn test_function_application_has_highest_precedence() {
         -fn1()()
         ";
 
-    let run = run(program);
-    assert!(run.is_ok());
+    let ast = build_ast(program);
+    assert!(ast.is_ok());
+    let ast = ast.unwrap();
 
-    let (ast, result) = run.unwrap();
+    let result = eval(&ast);
+    assert!(result.is_ok());
+    let result = result.unwrap();
 
     assert_eq!(
-        format!("{ast}"),
-        "(let fn1 = () => (() => (1)) in (-((fn1())())))"
+        ast,
+        build_ast("let fn1 = () => (() => (1)) in -((fn1())())").unwrap()
     );
 
     assert_eq!(result, DynValue::Integer(-1));
@@ -177,10 +213,13 @@ fn test_function_application_has_static_scoping() {
         fn1()
         ";
 
-    let run = run(program);
-    assert!(run.is_ok());
+    let ast = build_ast(program);
+    assert!(ast.is_ok());
+    let ast = ast.unwrap();
 
-    let (_, result) = run.unwrap();
+    let result = eval(&ast);
+    assert!(result.is_ok());
+    let result = result.unwrap();
 
     assert_eq!(result, DynValue::Integer(1));
 }
@@ -197,15 +236,20 @@ fn test_recursive_binding() {
             fib(10)
         ";
 
-    let run = run(program);
-    assert!(run.is_ok());
+    let ast = build_ast(program);
+    assert!(ast.is_ok());
+    let ast = ast.unwrap();
 
-    let (ast, result) = run.unwrap();
+    let result = eval(&ast);
+    assert!(result.is_ok());
+    let result = result.unwrap();
 
     assert_eq!(
-            format!("{ast}"),
+        ast,
+        build_ast(
             "(let rec fib = (n) => ((if (n <= 1) then n else ((fib((n - 1))) + (fib((n - 2)))))) in (fib(10)))"
-        );
+        ).unwrap()
+    );
 
     assert_eq!(result, DynValue::Integer(55));
 }
@@ -216,24 +260,13 @@ fn test_type_inference_unconstrained_binding() {
         let rec any = any in any
         ";
 
-    let parse = Parser::parse(Rule::file, program);
+    let ast = build_ast(program);
+    assert!(ast.is_ok());
+    let ast = ast.unwrap();
 
-    let expression = unsafe {
-        parse
-            .unwrap()
-            // Get file
-            .next()
-            .unwrap_unchecked()
-            // Get expression
-            .into_inner()
-            .next()
-            .unwrap_unchecked()
-    };
-
-    let ast = Expr::from_pair(expression).unwrap();
-
-    let typed_ast = typed_ast::TypedAst::from(ast).unwrap();
-
+    let typed_ast = typecheck(&ast);
+    assert!(typed_ast.is_ok());
+    let typed_ast = typed_ast.unwrap();
     assert!(matches!(typed_ast.root.ty.resolve(), Type::TypeVariable(_)))
 }
 
@@ -243,23 +276,13 @@ fn test_type_inference_function() {
         let rec fact = (n) => n*fact(n-1) in fact
         ";
 
-    let parse = Parser::parse(Rule::file, program);
+    let ast = build_ast(program);
+    assert!(ast.is_ok());
+    let ast = ast.unwrap();
 
-    let expression = unsafe {
-        parse
-            .unwrap()
-            // Get file
-            .next()
-            .unwrap_unchecked()
-            // Get expression
-            .into_inner()
-            .next()
-            .unwrap_unchecked()
-    };
-
-    let ast = Expr::from_pair(expression).unwrap();
-
-    let typed_ast = typed_ast::TypedAst::from(ast).unwrap();
+    let typed_ast = typecheck(&ast);
+    assert!(typed_ast.is_ok());
+    let typed_ast = typed_ast.unwrap();
 
     assert_eq!(
         typed_ast.root.ty,
@@ -276,23 +299,13 @@ fn test_type_inference_function_application() {
         let rec fact = (n) => n*fact(n-1) in fact(10)
         ";
 
-    let parse = Parser::parse(Rule::file, program);
+    let ast = build_ast(program);
+    assert!(ast.is_ok());
+    let ast = ast.unwrap();
 
-    let expression = unsafe {
-        parse
-            .unwrap()
-            // Get file
-            .next()
-            .unwrap_unchecked()
-            // Get expression
-            .into_inner()
-            .next()
-            .unwrap_unchecked()
-    };
-
-    let ast = Expr::from_pair(expression).unwrap();
-
-    let typed_ast = typed_ast::TypedAst::from(ast).unwrap();
+    let typed_ast = typecheck(&ast);
+    assert!(typed_ast.is_ok());
+    let typed_ast = typed_ast.unwrap();
 
     assert_eq!(typed_ast.root.ty, Type::Integer);
 }
@@ -303,23 +316,13 @@ fn test_type_inference_conditional() {
         let rec x = x in if x then x else x
         ";
 
-    let parse = Parser::parse(Rule::file, program);
+    let ast = build_ast(program);
+    assert!(ast.is_ok());
+    let ast = ast.unwrap();
 
-    let expression = unsafe {
-        parse
-            .unwrap()
-            // Get file
-            .next()
-            .unwrap_unchecked()
-            // Get expression
-            .into_inner()
-            .next()
-            .unwrap_unchecked()
-    };
-
-    let ast = Expr::from_pair(expression).unwrap();
-
-    let typed_ast = typed_ast::TypedAst::from(ast).unwrap();
+    let typed_ast = typecheck(&ast);
+    assert!(typed_ast.is_ok());
+    let typed_ast = typed_ast.unwrap();
 
     assert_eq!(typed_ast.root.ty, Type::Boolean);
 }

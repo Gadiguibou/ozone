@@ -9,6 +9,7 @@ use anyhow::anyhow;
 use parser::Parser;
 use parser::Rule;
 use pest::Parser as PestParser;
+use std::convert::TryFrom;
 use std::io::Write;
 use std::io::{self, BufRead};
 
@@ -34,26 +35,17 @@ pub fn run_prompt() -> anyhow::Result<()> {
 }
 
 pub fn run(contents: &str) -> anyhow::Result<()> {
-    let parse = Parser::parse(Rule::file, contents);
+    let parse = Parser::parse(Rule::file, contents)?;
     // println!("{parse:#?}");
 
-    let expression = unsafe {
-        parse?
-            // Get file
-            .next()
-            .unwrap_unchecked()
-            // Get expression
-            .into_inner()
-            .next()
-            .unwrap_unchecked()
-    };
-    // println!("{expression:#?}");
+    let ast = ast::Ast::try_from(parse)?;
+    // println!("{ast}");
 
-    let ast = ast::Expr::from_pair(expression)?;
-    println!("{ast}");
+    let typed_ast = typed_ast::TypedAst::from(ast.clone())?;
+    println!("{}", typed_ast.root);
 
     let mut bindings = zero_copy_stack::ZeroCopyStack::new();
-    let result = interpreter::eval(&ast, &mut bindings.handle())?;
+    let result = interpreter::eval(&ast.root, &mut bindings.handle())?;
     println!("{result}");
 
     Ok(())

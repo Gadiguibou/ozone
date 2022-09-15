@@ -1,7 +1,8 @@
 use std::fmt::Display;
 
 use crate::ast;
-use crate::ast::{BinaryOp, Expr, UnaryOp};
+use crate::ast::Node as UntypedNode;
+use crate::ast::{BinaryOp, UnaryOp};
 use anyhow::{anyhow, bail};
 use zero_copy_stack::{ZeroCopyStack, ZeroCopyStackHandle};
 
@@ -18,6 +19,7 @@ pub enum Type {
         parameter_types: Vec<Type>,
         return_type: Box<Type>,
     },
+    // Type variables carry the index of their content in the `TYPE_VARIABLES` `Vec`.
     TypeVariable(usize),
 }
 
@@ -118,7 +120,7 @@ impl Display for Type {
             } => {
                 write!(
                     f,
-                    "({}) => ({})",
+                    "({}) -> ({})",
                     parameters
                         .iter()
                         .map(|t| t.to_string())
@@ -201,9 +203,9 @@ pub enum NodeKind {
 }
 
 impl TypedAst {
-    pub fn from(ast: ast::Expr) -> anyhow::Result<Self> {
+    pub fn from(ast: ast::Ast) -> anyhow::Result<Self> {
         let mut bindings = Bindings::new();
-        let root = Node::from(ast, &mut bindings.scoped())?;
+        let root = Node::from(ast.root, &mut bindings.scoped())?;
         Ok(Self { root })
     }
 }
@@ -221,34 +223,34 @@ impl Bindings {
 }
 
 impl Node {
-    fn from(ast: ast::Expr, bindings: &mut ScopedBindings) -> anyhow::Result<Self> {
+    fn from(ast: UntypedNode, bindings: &mut ScopedBindings) -> anyhow::Result<Self> {
         match ast {
-            ast::Expr::Conditional {
+            UntypedNode::Conditional {
                 condition,
                 then_expr,
                 else_expr,
             } => Self::from_conditional(bindings, *condition, *then_expr, *else_expr),
-            ast::Expr::Binding {
+            UntypedNode::Binding {
                 name,
                 recursive,
                 value,
                 body,
             } => Self::from_binding(bindings, name, recursive, *value, *body),
-            ast::Expr::BinaryOp { op, lhs, rhs } => Self::from_binary_op(bindings, *lhs, op, *rhs),
-            ast::Expr::UnaryOp { op, expr } => Self::from_unary_op(bindings, op, *expr),
-            ast::Expr::FunctionApplication {
+            UntypedNode::BinaryOp { op, lhs, rhs } => Self::from_binary_op(bindings, *lhs, op, *rhs),
+            UntypedNode::UnaryOp { op, expr } => Self::from_unary_op(bindings, op, *expr),
+            UntypedNode::FunctionApplication {
                 function,
                 arguments,
             } => Self::from_function_application(bindings, *function, arguments),
-            ast::Expr::Function { parameters, body } => {
+            UntypedNode::Function { parameters, body } => {
                 Self::from_function(bindings, parameters, *body)
             }
-            ast::Expr::Identifier(name) => Self::from_identifier(bindings, name),
-            ast::Expr::Integer(value) => Ok(Self {
+            UntypedNode::Identifier(name) => Self::from_identifier(bindings, name),
+            UntypedNode::Integer(value) => Ok(Self {
                 kind: NodeKind::Integer(value),
                 ty: Type::Integer,
             }),
-            ast::Expr::Boolean(value) => Ok(Self {
+            UntypedNode::Boolean(value) => Ok(Self {
                 kind: NodeKind::Boolean(value),
                 ty: Type::Boolean,
             }),
@@ -257,9 +259,9 @@ impl Node {
 
     fn from_conditional(
         bindings: &mut ScopedBindings,
-        condition: Expr,
-        then_expr: Expr,
-        else_expr: Expr,
+        condition: UntypedNode,
+        then_expr: UntypedNode,
+        else_expr: UntypedNode,
     ) -> anyhow::Result<Node> {
         let condition = Box::new(Node::from(condition, bindings)?);
 
@@ -293,8 +295,8 @@ impl Node {
         bindings: &mut ScopedBindings,
         name: String,
         recursive: bool,
-        value: Expr,
-        body: Expr,
+        value: UntypedNode,
+        body: UntypedNode,
     ) -> anyhow::Result<Node> {
         let value = if recursive {
             let mut bindings = bindings.handle();
@@ -325,9 +327,9 @@ impl Node {
 
     fn from_binary_op(
         bindings: &mut ScopedBindings,
-        lhs: Expr,
+        lhs: UntypedNode,
         op: BinaryOp,
-        rhs: Expr,
+        rhs: UntypedNode,
     ) -> anyhow::Result<Node> {
         use BinaryOp::*;
         match op {
@@ -344,9 +346,9 @@ impl Node {
 
     fn from_arithmetic_op(
         bindings: &mut ZeroCopyStackHandle<Binding>,
-        lhs: Expr,
+        lhs: UntypedNode,
         op: BinaryOp,
-        rhs: Expr,
+        rhs: UntypedNode,
     ) -> anyhow::Result<Node> {
         let lhs = Box::new(Node::from(lhs, bindings)?);
         let rhs = Box::new(Node::from(rhs, bindings)?);
@@ -372,9 +374,9 @@ impl Node {
 
     fn from_ordering_op(
         bindings: &mut ZeroCopyStackHandle<Binding>,
-        lhs: Expr,
+        lhs: UntypedNode,
         op: BinaryOp,
-        rhs: Expr,
+        rhs: UntypedNode,
     ) -> anyhow::Result<Node> {
         let lhs = Box::new(Node::from(lhs, bindings)?);
         let rhs = Box::new(Node::from(rhs, bindings)?);
@@ -400,9 +402,9 @@ impl Node {
 
     fn from_equality_op(
         bindings: &mut ZeroCopyStackHandle<Binding>,
-        lhs: Expr,
+        lhs: UntypedNode,
         op: BinaryOp,
-        rhs: Expr,
+        rhs: UntypedNode,
     ) -> anyhow::Result<Node> {
         let lhs = Box::new(Node::from(lhs, bindings)?);
         let rhs = Box::new(Node::from(rhs, bindings)?);
@@ -433,9 +435,9 @@ impl Node {
 
     fn from_logical_op(
         bindings: &mut ZeroCopyStackHandle<Binding>,
-        lhs: Expr,
+        lhs: UntypedNode,
         op: BinaryOp,
-        rhs: Expr,
+        rhs: UntypedNode,
     ) -> anyhow::Result<Node> {
         let lhs = Box::new(Node::from(lhs, bindings)?);
         let rhs = Box::new(Node::from(rhs, bindings)?);
@@ -462,7 +464,7 @@ impl Node {
     fn from_unary_op(
         bindings: &mut ZeroCopyStackHandle<Binding>,
         op: UnaryOp,
-        expr: Expr,
+        expr: UntypedNode,
     ) -> anyhow::Result<Node> {
         let expr = Box::new(Node::from(expr, bindings)?);
 
@@ -487,8 +489,8 @@ impl Node {
 
     fn from_function_application(
         bindings: &mut ZeroCopyStackHandle<Binding>,
-        function: Expr,
-        arguments: Vec<Expr>,
+        function: UntypedNode,
+        arguments: Vec<UntypedNode>,
     ) -> anyhow::Result<Node> {
         let function = Box::new(Node::from(function, bindings)?);
 
@@ -526,7 +528,7 @@ impl Node {
     fn from_function(
         bindings: &mut ZeroCopyStackHandle<Binding>,
         parameters: Vec<String>,
-        body: Expr,
+        body: UntypedNode,
     ) -> anyhow::Result<Node> {
         let mut bindings = bindings.handle();
         for parameter in &parameters {
@@ -562,5 +564,66 @@ impl Node {
             ty: binding.ty.resolve(),
             kind: NodeKind::Identifier(name),
         })
+    }
+}
+
+impl Display for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use NodeKind::*;
+        match &self.kind {
+            Conditional {
+                condition,
+                then_expr,
+                else_expr,
+            } => {
+                write!(f, "if {} then {} else {}", condition, then_expr, else_expr)
+            }
+            Binding {
+                name,
+                recursive,
+                value,
+                body,
+            } => write!(
+                f,
+                "let {}{}: {} = {} in {}",
+                if *recursive { "rec " } else { "" },
+                name,
+                value.ty,
+                value,
+                body
+            ),
+            BinaryOp { op, lhs, rhs } => write!(f, "{} {} {}", lhs, op, rhs),
+            UnaryOp { op, expr } => write!(f, "{}{}", op, expr),
+            FunctionApplication {
+                function,
+                arguments,
+            } => {
+                write!(
+                    f,
+                    "{}({})",
+                    function,
+                    arguments
+                        .iter()
+                        .map(|a| { format!("{}", a) })
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            }
+            Function { parameters, body } => {
+                write!(
+                    f,
+                    "({}) => {}",
+                    parameters
+                        .iter()
+                        .map(|p| { p.to_string() })
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                    body,
+                )
+            }
+            Identifier(name) => write!(f, "{}", name),
+            Integer(value) => write!(f, "{}", value),
+            Boolean(value) => write!(f, "{}", value),
+        }
     }
 }

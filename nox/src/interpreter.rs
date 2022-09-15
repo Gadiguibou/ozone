@@ -3,7 +3,7 @@ use std::fmt::Display;
 use anyhow::bail;
 use zero_copy_stack::{ZeroCopyStack, ZeroCopyStackHandle};
 
-use crate::ast::{BinaryOp, Expr, UnaryOp};
+use crate::ast::{BinaryOp, Node, UnaryOp};
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub enum DynValue {
@@ -12,10 +12,10 @@ pub enum DynValue {
     Function {
         parameters: Vec<String>,
         captured_bindings: ZeroCopyStack<Binding>,
-        body: Box<Expr>,
+        body: Box<Node>,
     },
     /// Used in recursive bindings to allow referencing the binding itself.
-    Lazy(Box<Expr>),
+    Lazy(Box<Node>),
 }
 
 impl Display for DynValue {
@@ -42,12 +42,12 @@ pub struct Binding {
     mutable: bool,
 }
 
-/// Evaluates an [Expr].
-pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
+/// Evaluates an [ast::Node].
+pub fn eval(expr: &Node, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
     use DynValue::*;
 
     match expr {
-        Expr::Conditional {
+        Node::Conditional {
             condition,
             then_expr,
             else_expr,
@@ -63,7 +63,7 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                 eval(else_expr, bindings)
             }
         }
-        Expr::Binding {
+        Node::Binding {
             name,
             recursive,
             value,
@@ -89,7 +89,7 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
             let body = eval(body, &mut bindings)?;
             Ok(body)
         }
-        Expr::BinaryOp { op, lhs, rhs } => {
+        Node::BinaryOp { op, lhs, rhs } => {
             let lhs = eval(lhs, bindings)?;
             let rhs = eval(rhs, bindings)?;
 
@@ -114,6 +114,8 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                 // TODO: This is missing equality for custom types.
                 (Integer(lhs), Equal, Integer(rhs)) => Ok(Boolean(lhs == rhs)),
                 (Integer(lhs), NotEqual, Integer(rhs)) => Ok(Boolean(lhs != rhs)),
+                (Boolean(lhs), Equal, Boolean(rhs)) => Ok(Boolean(lhs == rhs)),
+                (Boolean(lhs), NotEqual, Boolean(rhs)) => Ok(Boolean(lhs != rhs)),
                 // Ordering
                 (Integer(lhs), LessThan, Integer(rhs)) => Ok(Boolean(lhs < rhs)),
                 (Integer(lhs), LessThanOrEqual, Integer(rhs)) => Ok(Boolean(lhs <= rhs)),
@@ -131,7 +133,7 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                 )),
             }
         }
-        Expr::UnaryOp { op, expr } => {
+        Node::UnaryOp { op, expr } => {
             let expr = eval(expr, bindings)?;
 
             use UnaryOp::*;
@@ -141,7 +143,7 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                 (op, expr) => Err(anyhow::anyhow!("Cannot apply {:?} to {:?}", op, expr)),
             }
         }
-        Expr::FunctionApplication {
+        Node::FunctionApplication {
             function,
             arguments,
         } => {
@@ -184,7 +186,7 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                 _ => unreachable!(),
             }
         }
-        Expr::Function { parameters, body } => {
+        Node::Function { parameters, body } => {
             // TODO: Capture only the bindings which are used in the function body.
             let captured_bindings = bindings.iter().map(Clone::clone).collect();
             Ok(Function {
@@ -193,7 +195,7 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                 body: body.clone(),
             })
         }
-        Expr::Identifier(identifier) => {
+        Node::Identifier(identifier) => {
             let binding = bindings
                 .find(|binding| binding.name == *identifier)
                 .ok_or_else(|| anyhow::anyhow!("Undefined variable: {}", identifier))?;
@@ -205,7 +207,7 @@ pub fn eval(expr: &Expr, bindings: &mut Bindings) -> anyhow::Result<DynValue> {
                 _ => Ok(value),
             }
         }
-        Expr::Integer(integer) => Ok(Integer(*integer)),
-        Expr::Boolean(boolean) => Ok(Boolean(*boolean)),
+        Node::Integer(integer) => Ok(Integer(*integer)),
+        Node::Boolean(boolean) => Ok(Boolean(*boolean)),
     }
 }

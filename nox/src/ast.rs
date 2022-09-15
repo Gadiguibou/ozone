@@ -1,40 +1,75 @@
 use std::fmt::Display;
 
 use crate::parser::Rule;
+use anyhow::anyhow;
 use once_cell::sync::Lazy;
-use pest::iterators::Pair;
+use pest::iterators::{Pair, Pairs};
 use pest::prec_climber::{Assoc, Operator, PrecClimber};
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
+pub struct Ast {
+    pub root: Node,
+}
+
+impl TryFrom<Pairs<'_, Rule>> for Ast {
+    type Error = anyhow::Error;
+
+    fn try_from(mut pairs: Pairs<Rule>) -> anyhow::Result<Self> {
+        let file = pairs
+            .next()
+            .ok_or_else(|| anyhow!("Passed in an empty iterator"))?;
+
+        if file.as_rule() != Rule::file {
+            panic!("Did not pass in a Rule::file")
+        }
+
+        let expression = unsafe {
+            pairs
+                // Get file
+                .next()
+                .unwrap_unchecked()
+                // Get expression
+                .into_inner()
+                .next()
+                .unwrap_unchecked()
+        };
+
+        Ok(Self {
+            root: Node::try_from(expression)?,
+        })
+    }
+}
 
 // TODO: Add error reporting capabilities here by keeping the span associated with each node
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
-pub enum Expr {
+pub enum Node {
     Conditional {
-        condition: Box<Expr>,
-        then_expr: Box<Expr>,
-        else_expr: Box<Expr>,
+        condition: Box<Node>,
+        then_expr: Box<Node>,
+        else_expr: Box<Node>,
     },
     Binding {
         name: String,
         recursive: bool,
-        value: Box<Expr>,
-        body: Box<Expr>,
+        value: Box<Node>,
+        body: Box<Node>,
     },
     BinaryOp {
         op: BinaryOp,
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
+        lhs: Box<Node>,
+        rhs: Box<Node>,
     },
     UnaryOp {
         op: UnaryOp,
-        expr: Box<Expr>,
+        expr: Box<Node>,
     },
     FunctionApplication {
-        function: Box<Expr>,
-        arguments: Vec<Expr>,
+        function: Box<Node>,
+        arguments: Vec<Node>,
     },
     Function {
         parameters: Vec<String>,
-        body: Box<Expr>,
+        body: Box<Node>,
     },
     Identifier(String),
     Integer(i64),
@@ -69,13 +104,11 @@ pub enum UnaryOp {
     Not,
 }
 
-impl Expr {
-    /// Constructs an [Rule::expression] while respecting operator precedence and associativity.
-    pub fn from_pair(pair: Pair<Rule>) -> anyhow::Result<Expr> {
-        if pair.as_rule() != Rule::expression {
-            panic!("Did not pass in an expression")
-        }
+impl TryFrom<Pair<'_, Rule>> for Node {
+    type Error = anyhow::Error;
 
+    /// Constructs a [Rule::expression] while respecting operator precedence and associativity.
+    fn try_from(pair: Pair<Rule>) -> anyhow::Result<Node> {
         let inner = pair.into_inner().next().unwrap();
 
         match inner.as_rule() {
@@ -87,7 +120,7 @@ impl Expr {
 }
 
 /// Parses a [Rule::prefix_expression].
-fn parse_prefix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+fn parse_prefix_expression(pair: Pair<Rule>) -> anyhow::Result<Node> {
     let mut inner = pair.into_inner();
     let (first, second) = (inner.next(), inner.next());
     // first is always present
@@ -95,14 +128,14 @@ fn parse_prefix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
     match first.as_rule() {
         Rule::minus => {
             let subexpression = parse_postfix_expression(second.unwrap())?;
-            Ok(Expr::UnaryOp {
+            Ok(Node::UnaryOp {
                 op: UnaryOp::Negate,
                 expr: Box::new(subexpression),
             })
         }
         Rule::not => {
             let subexpression = parse_postfix_expression(second.unwrap())?;
-            Ok(Expr::UnaryOp {
+            Ok(Node::UnaryOp {
                 op: UnaryOp::Not,
                 expr: Box::new(subexpression),
             })
@@ -114,7 +147,7 @@ fn parse_prefix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
 }
 
 /// Parses a [Rule::infix_expression].
-fn parse_infix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+fn parse_infix_expression(pair: Pair<Rule>) -> anyhow::Result<Node> {
     // Precedence increases with the index in the Vec
     static PREC_CLIMBER: Lazy<PrecClimber<Rule>> = Lazy::new(|| {
         PrecClimber::new(vec![
@@ -135,10 +168,10 @@ fn parse_infix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
     });
 
     fn infix(
-        lhs: anyhow::Result<Expr>,
+        lhs: anyhow::Result<Node>,
         op: Pair<Rule>,
-        rhs: anyhow::Result<Expr>,
-    ) -> anyhow::Result<Expr> {
+        rhs: anyhow::Result<Node>,
+    ) -> anyhow::Result<Node> {
         let lhs = lhs?;
         let rhs = rhs?;
 
@@ -164,7 +197,7 @@ fn parse_infix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
             _ => unreachable!(),
         };
 
-        Ok(Expr::BinaryOp {
+        Ok(Node::BinaryOp {
             op,
             lhs: Box::new(lhs),
             rhs: Box::new(rhs),
@@ -175,7 +208,7 @@ fn parse_infix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
 }
 
 /// Parses a [Rule::postfix_expression].
-fn parse_postfix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+fn parse_postfix_expression(pair: Pair<Rule>) -> anyhow::Result<Node> {
     let inner = pair.into_inner().next().unwrap();
 
     match inner.as_rule() {
@@ -186,7 +219,7 @@ fn parse_postfix_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
 }
 
 /// Parses a [Rule::subexpression].
-fn parse_subexpression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+fn parse_subexpression(pair: Pair<Rule>) -> anyhow::Result<Node> {
     let inner = pair.into_inner().next().unwrap();
 
     match inner.as_rule() {
@@ -202,22 +235,22 @@ fn parse_subexpression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
 }
 
 /// Parses a [Rule::conditional_expression].
-fn parse_conditional_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+fn parse_conditional_expression(pair: Pair<Rule>) -> anyhow::Result<Node> {
     let mut inner = pair.into_inner();
 
     let condition = inner.next().unwrap();
     let then_expr = inner.next().unwrap();
     let else_expr = inner.next().unwrap();
 
-    Ok(Expr::Conditional {
-        condition: Box::new(Expr::from_pair(condition)?),
-        then_expr: Box::new(Expr::from_pair(then_expr)?),
-        else_expr: Box::new(Expr::from_pair(else_expr)?),
+    Ok(Node::Conditional {
+        condition: Box::new(Node::try_from(condition)?),
+        then_expr: Box::new(Node::try_from(then_expr)?),
+        else_expr: Box::new(Node::try_from(else_expr)?),
     })
 }
 
 /// Parses a [Rule::binding_expression].
-fn parse_binding_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+fn parse_binding_expression(pair: Pair<Rule>) -> anyhow::Result<Node> {
     let mut inner = pair.into_inner();
 
     let (recursive, name) = {
@@ -230,38 +263,38 @@ fn parse_binding_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
     let value = inner.next().unwrap();
     let body = inner.next().unwrap();
 
-    Ok(Expr::Binding {
+    Ok(Node::Binding {
         name: name.as_str().to_string(),
         recursive,
-        value: Box::new(Expr::from_pair(value)?),
-        body: Box::new(Expr::from_pair(body)?),
+        value: Box::new(Node::try_from(value)?),
+        body: Box::new(Node::try_from(body)?),
     })
 }
 
 /// Parses a [Rule::parenthesized_expression].
-fn parse_parenthesized_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+fn parse_parenthesized_expression(pair: Pair<Rule>) -> anyhow::Result<Node> {
     let inner = unsafe { pair.into_inner().next().unwrap_unchecked() };
     match inner.as_rule() {
-        Rule::expression => Expr::from_pair(inner),
+        Rule::expression => Node::try_from(inner),
         _ => unreachable!(),
     }
 }
 
 /// Parses a [Rule::function_expression].
-fn parse_function_expression(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+fn parse_function_expression(pair: Pair<Rule>) -> anyhow::Result<Node> {
     let mut inner = pair.into_inner();
 
     let parameters = parse_parameter_list(inner.next().unwrap())?;
-    let body = Expr::from_pair(inner.next().unwrap())?;
+    let body = Node::try_from(inner.next().unwrap())?;
 
-    Ok(Expr::Function {
+    Ok(Node::Function {
         parameters,
         body: Box::new(body),
     })
 }
 
 /// Parses a [Rule::function_application].
-fn parse_function_application(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+fn parse_function_application(pair: Pair<Rule>) -> anyhow::Result<Node> {
     let mut inner = pair.into_inner();
 
     let function = parse_subexpression(inner.next().unwrap())?;
@@ -272,7 +305,7 @@ fn parse_function_application(pair: Pair<Rule>) -> anyhow::Result<Expr> {
     // "Left-associate" function applications.
     let function_application = argument_lists
         .into_iter()
-        .fold(function, |function, arguments| Expr::FunctionApplication {
+        .fold(function, |function, arguments| Node::FunctionApplication {
             function: Box::new(function),
             arguments,
         });
@@ -281,9 +314,9 @@ fn parse_function_application(pair: Pair<Rule>) -> anyhow::Result<Expr> {
 }
 
 /// Parses a [Rule::argument_list].
-fn parse_argument_list(pair: Pair<Rule>) -> anyhow::Result<Vec<Expr>> {
+fn parse_argument_list(pair: Pair<Rule>) -> anyhow::Result<Vec<Node>> {
     pair.into_inner()
-        .map(Expr::from_pair)
+        .map(Node::try_from)
         .collect::<anyhow::Result<_>>()
 }
 
@@ -293,7 +326,7 @@ fn parse_parameter_list(pair: Pair<Rule>) -> anyhow::Result<Vec<String>> {
 }
 
 /// Parses a [Rule::literal].
-fn parse_literal(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+fn parse_literal(pair: Pair<Rule>) -> anyhow::Result<Node> {
     let mut inner = pair.into_inner();
     let first = inner.next().unwrap();
     match first.as_rule() {
@@ -304,35 +337,35 @@ fn parse_literal(pair: Pair<Rule>) -> anyhow::Result<Expr> {
 }
 
 /// Parses a [Rule::integer].
-fn parse_integer(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+fn parse_integer(pair: Pair<Rule>) -> anyhow::Result<Node> {
     let s = pair.as_str();
     let integer: Result<i64, _> = s.chars().filter(|c| c != &'_').collect::<String>().parse();
     // All expressions composed of only ascii digits and underscores are valid integers (except for overflow)
     // TODO: Handle overflows gracefully
-    Ok(Expr::Integer(integer.unwrap()))
+    Ok(Node::Integer(integer.unwrap()))
 }
 
 /// Parses a [Rule::boolean].
-fn parse_boolean(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+fn parse_boolean(pair: Pair<Rule>) -> anyhow::Result<Node> {
     let s = pair.as_str();
     let boolean = match s {
         "true" => true,
         "false" => false,
         _ => unreachable!(),
     };
-    Ok(Expr::Boolean(boolean))
+    Ok(Node::Boolean(boolean))
 }
 
 /// Parses a [Rule::identifier].
-fn parse_identifier(pair: Pair<Rule>) -> anyhow::Result<Expr> {
+fn parse_identifier(pair: Pair<Rule>) -> anyhow::Result<Node> {
     let s = pair.as_str();
-    Ok(Expr::Identifier(s.to_string()))
+    Ok(Node::Identifier(s.to_string()))
 }
 
-impl Display for Expr {
+impl Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::Conditional {
+            Node::Conditional {
                 condition,
                 then_expr,
                 else_expr,
@@ -343,7 +376,7 @@ impl Display for Expr {
                     condition, then_expr, else_expr
                 )
             }
-            Expr::Binding {
+            Node::Binding {
                 name,
                 recursive,
                 value,
@@ -358,9 +391,9 @@ impl Display for Expr {
                     body
                 )
             }
-            Expr::BinaryOp { lhs, op, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
-            Expr::UnaryOp { op, expr } => write!(f, "({}{})", op, expr),
-            Expr::FunctionApplication {
+            Node::BinaryOp { lhs, op, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
+            Node::UnaryOp { op, expr } => write!(f, "({}{})", op, expr),
+            Node::FunctionApplication {
                 function,
                 arguments,
             } => {
@@ -375,12 +408,12 @@ impl Display for Expr {
                         .join(", ")
                 )
             }
-            Expr::Function { parameters, body } => {
+            Node::Function { parameters, body } => {
                 write!(f, "({}) => ({})", parameters.join(", "), body)
             }
-            Expr::Identifier(s) => write!(f, "{}", s),
-            Expr::Integer(i) => write!(f, "{}", i),
-            Expr::Boolean(b) => write!(f, "{}", b),
+            Node::Identifier(s) => write!(f, "{}", s),
+            Node::Integer(i) => write!(f, "{}", i),
+            Node::Boolean(b) => write!(f, "{}", b),
         }
     }
 }
