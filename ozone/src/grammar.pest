@@ -1,0 +1,117 @@
+WHITESPACE = _{ PATTERN_WHITE_SPACE }
+COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+
+file = { SOI ~ expression ~ EOI }
+
+expression = { prefix_op* ~ primary ~ postfix_op* ~ ( infix_op ~ prefix_op* ~ primary ~ postfix_op* )* }
+
+prefix_op = _{
+    unary_minus
+  | not
+}
+
+infix_op = _{
+  // Logical
+    and
+  | or
+  // Equality
+  | equal
+  | not_equal
+  // Ordering
+  | less_than_or_equal
+  | greater_than_or_equal
+  | less_than
+  | greater_than
+  // Arithmetic
+  | power
+  | plus
+  | minus
+  | times
+  | divide
+  | modulo
+}
+
+postfix_op = _{
+  function_application
+}
+
+primary = _{
+    conditional_expression
+  | binding_expression
+  | function_expression
+  | parenthesized_expression
+  | identifier
+  | literal
+}
+
+function_expression = {
+  "(" ~ parameter_list ~ ")" ~ "->" ~ expression
+}
+
+parameter_list = {
+  ( identifier ~ ("," ~ identifier)* ~ ","? )?
+}
+
+function_application = {
+  "(" ~ argument_list ~ ")"
+}
+
+argument_list = {
+  ( expression ~ ("," ~ expression)* ~ ","? )?
+}
+
+conditional_expression = { if_clause ~ ( "else" ~ if_clause )* ~ else_clause? }
+
+if_clause = { "if" ~ expression ~ "{" ~ expression ~ "}" }
+
+else_clause = { "else" ~ "{" ~ expression ~ "}" }
+
+binding_expression = { "let" ~ recursivity ~ identifier ~ "=" ~ expression ~ "in" ~ expression? }
+
+parenthesized_expression = { "(" ~ expression ~ ")" }
+
+identifier = @{ !(reserved_keyword ~ !XID_CONTINUE) ~ XID_START ~ (XID_CONTINUE)* }
+
+// TODO: Report a custom error when someone tries to use a reserved keyword as an identifier instead of raising a parsing error.
+reserved_keyword = {
+    "if"
+  | "else"
+  | "let"
+  | "rec"
+  | "in"
+  | boolean // "true" | "false"
+  | "and"
+  | "or"
+  | "not"
+}
+
+literal = { integer | boolean }
+
+recursivity = _{ recursive | non_recursive }
+recursive = { "rec" }
+non_recursive = { "" }
+
+integer = @{ '0'..'9' ~ ( '0'..'9' | "_" )* }
+
+boolean = { "true" | "false" }
+
+// Equality
+equal = { "==" }
+not_equal = { "!=" }
+// Ordering
+less_than_or_equal = { "<=" }
+greater_than_or_equal = { ">=" }
+less_than = { "<" }
+greater_than = { ">" }
+// Logical
+and = { "and" }
+or = { "or" }
+not = { "not" }
+// Arithmetic
+power = { "^" }
+plus = { "+" }
+minus = { "-" }
+unary_minus = { "-" }
+times = { "*" }
+divide = { "/" }
+modulo = { "%" }

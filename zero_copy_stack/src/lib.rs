@@ -37,10 +37,10 @@
 ///     handle.push(3);
 ///     {
 ///         let mut nested_handle = handle.handle();
-///         handle.push(4);
-///         handle.push(5);
-///         handle.push(6);
-///         assert_eq!(handle.len(), 6);
+///         nested_handle.push(4);
+///         nested_handle.push(5);
+///         nested_handle.push(6);
+///         assert_eq!(nested_handle.len(), 6);
 ///     }
 ///     assert_eq!(handle.len(), 3);
 /// }
@@ -52,7 +52,7 @@
 /// A [ZeroCopyStack] is a simple wrapper around a [std::vec::Vec]. A [ZeroCopyStackHandle] is a simple wrapper
 /// around a `&mut Vec` with a `Drop` implementation that truncates the vector to its original length. Hence, there is
 /// almost no overhead to using a [ZeroCopyStack] and [ZeroCopyStackHandle]s over a [std::vec::Vec].
-#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ZeroCopyStack<T> {
     stack: Vec<T>,
 }
@@ -112,13 +112,13 @@ impl<T> std::iter::FromIterator<T> for ZeroCopyStack<T> {
 }
 
 impl<T> ZeroCopyStack<T>
-    where
-        T: PartialEq,
+where
+    T: PartialEq,
 {
     /// Searches for an element satisfying the predicate, starting from the top of the stack.
     pub fn find<P>(&self, predicate: P) -> Option<&T>
-        where
-            P: Fn(&T) -> bool,
+    where
+        P: Fn(&T) -> bool,
     {
         self.stack.iter().rev().find(|x| predicate(x))
     }
@@ -134,13 +134,13 @@ impl<T> ZeroCopyStack<T>
 /// When the handle is dropped, the stack is reverted to its original state.
 ///
 /// See [ZeroCopyStack] for more information.
-#[derive(Debug, PartialEq, PartialOrd, Hash)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ZeroCopyStackHandle<'input, T> {
     starting_len: usize,
     stack: &'input mut Vec<T>,
 }
 
-impl<T> ZeroCopyStackHandle<'_, T> {
+impl<'input, T> ZeroCopyStackHandle<'input, T> {
     /// Pushes a value onto the stack.
     pub fn push(&mut self, value: T) {
         self.stack.push(value)

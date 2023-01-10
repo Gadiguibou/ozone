@@ -1,6 +1,6 @@
 [workspace]
 
 members = [
-    "nox",
-    "zero_copy_stack"
+    "ozone",
+    "zero_copy_stack",
 ]
